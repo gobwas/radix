@@ -64,6 +64,18 @@ func TestTrieInsert(t *testing.T) {
 				},
 			},
 		},
+		{
+			insert: []insert{
+				// many emails
+				{Pairs{{1, "a@example.com"}}, 1},
+				{Pairs{{1, "b@example.com"}}, 2},
+				{Pairs{{1, "c@example.com"}}, 3},
+				{Pairs{{1, "d@example.com"}}, 4},
+
+				// many domains
+				{Pairs{{2, "example.com"}}, 5},
+			},
+		},
 	} {
 		trie := New()
 		for _, op := range test.insert {
