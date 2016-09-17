@@ -30,8 +30,8 @@ func graphvizLeaf(w io.Writer, value string, l *leaf, id *int64) int64 {
 		d := graphvizData(w, l.data, id)
 		fmt.Fprintf(w, `"%v"->"%v"[style=dashed,dir=none];`, i, d)
 	}
-	if l.child != nil {
-		cid := graphvizNode(w, l.child, id)
+	if l.node != nil {
+		cid := graphvizNode(w, l.node, id)
 		fmt.Fprintf(w, `"%v"->"%v";`, i, cid)
 	}
 	return i

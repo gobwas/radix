@@ -15,65 +15,81 @@ func (t *Trie) Insert(p Pairs, v int) {
 }
 
 // checks by boyer-moore voting algorithm.
-func checkNode(parent *leaf) {
-	n := parent.child
+func compress(parent *leaf) {
+	n := parent.node
 	if n == nil {
 		return
 	}
 
 	var counter int
 	var candidate *node
-	for k, l := range n.values {
-		if l.node == nil || l.node.values[l.node.val] != nil {
+	for _, l := range n.values {
+		if l.node == nil {
 			continue
-		}
-		if len(l.node.values) > 1 {
-			// todo
 		}
 		switch {
 		case counter == 0:
-			candiate = l.node
+			candidate = l.node
 			counter = 1
-		case candidate.key == l.node.key && candidate.val == l.node.val:
+		case l.node.key == candidate.key && l.node.has(candidate.val):
 			counter++
 		default:
 			counter--
 		}
 	}
-	var n int
+	if candidate == nil {
+		return
+	}
+
+	var total int
 	counter = 0
-	for k, l := range n.values {
+	for _, l := range n.values {
+		total++
 		if l.node == nil {
 			continue
 		}
-		n++
-		if candidate.key == l.node.key && candidate.val == l.node.val {
+		if l.node.key == candidate.key && l.node.has(candidate.val) {
 			counter++
 		}
 	}
+
 	// We have found more than n/2 duplicates.
-	if counter > n/2 { // could optimize!
-		nn = &node{
-			key: candidate.key,
-			val: candidate.val,
-			values: map[string]*leaf{
-				candidate.val: &leaf{},
-			},
+	if counter > total/2 { // could optimize!
+		nn := &node{
+			key:    candidate.key,
+			val:    candidate.val,
+			values: map[string]*leaf{},
 		}
+
 		for k, l := range n.values {
 			switch {
-			case l.child == nil:
+			case l.node == nil || l.node.key != nn.key:
 				lf := nn.get(any)
-				lf.data = append(l.data, l.data...)
+				ch := lf.ensureChild(n.key)
+				ch.addChain(k, n.cutChain(k))
 
-			case l.child.key == nn.key:
-				// merge l.child.values with nn.values
-				// append each l.child.values[n]...
+			case l.node.key == nn.key:
+				if len(l.data) > 0 {
+					lf := nn.get(any)
+					ch := lf.ensureChild(n.key)
+					clf := ch.get(k)
+					clf.data = append(clf.data, l.data...)
+				}
 
-			default: // skip
+				// merge l.node.values with nn.values
+				for _, lf := range l.node.values {
+					nlf := nn.get(candidate.val)
+					ch := nlf.ensureChild(n.key)
+					chlf := ch.get(k)
+					chlf.data = lf.data
+					chlf.node = lf.node
+					lf.node = nil
+					lf.data = nil
+				}
 			}
 		}
-		parent.child = nn
+
+		parent.node = nn
 	}
 }
 
@@ -97,26 +113,63 @@ type node struct {
 	val string
 }
 
-func (n *node) get(k string) *leaf {
-	l, ok := n.values[k]
+func (n *node) has(k string) (ok bool) {
+	_, ok = n.values[k]
+	return
+}
+
+func (n *node) get(v string) *leaf {
+	l, ok := n.values[v]
 	if !ok {
+		if n.values == nil {
+			n.values = make(map[string]*leaf)
+		}
 		l = &leaf{}
 		n.values[v] = l
 	}
 	return l
 }
 
+func (n *node) cutChain(val string) (ret *leaf) {
+	ret, ok := n.values[val]
+	if ok {
+		delete(n.values, val)
+	}
+	return
+}
+
+func (n *node) addChain(val string, m *leaf) {
+	_, ok := n.values[val]
+	if !ok {
+		n.values[val] = m
+		return
+	}
+	panic("chain already exists")
+}
+
 type leaf struct {
-	data  []int
-	child *node
+	data []int
+	node *node
+}
+
+func (l *leaf) ensureChild(key uint) (ret *node) {
+	if l.node == nil {
+		ret = &node{key: key}
+		l.node = ret
+	} else if l.node.key == key {
+		ret = l.node
+	} else {
+		panic("could not return child")
+	}
+	return
 }
 
 func (l *leaf) insert(p Pairs, v int) {
 	for len(p) > 0 {
-		n := l.child
+		n := l.node
 		if n == nil {
 			// Create whole chain of p with v at the end.
-			l.child = makeTree(p, v)
+			l.node = makeTree(p, v)
 			return
 		}
 		w, v, ok := p.without(n.key)
@@ -126,10 +179,6 @@ func (l *leaf) insert(p Pairs, v int) {
 			v = any
 		}
 		l = n.get(v)
-		//if l, ok = n.values[v]; !ok {
-		//	l = &leaf{}
-		//	n.values[v] = l
-		//}
 	}
 	l.data = append(l.data, v)
 }
@@ -170,7 +219,7 @@ func makeTree(p Pairs, v int) (ret *node) {
 			key: p[i].Key,
 			values: map[string]*leaf{
 				p[i].Value: &leaf{
-					child: ret,
+					node: ret,
 				},
 			},
 			val: p[i].Value,

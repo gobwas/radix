@@ -13,7 +13,8 @@ type insert struct {
 
 func TestTrieInsert(t *testing.T) {
 	for i, test := range []struct {
-		insert []insert
+		insert   []insert
+		compress bool
 	}{
 		{
 			insert: []insert{
@@ -71,13 +72,31 @@ func TestTrieInsert(t *testing.T) {
 				{Pairs{{1, "b@example.com"}, {2, "domain.org"}}, 2},
 				{Pairs{{1, "c@example.com"}, {2, "domain.org"}}, 3},
 				{Pairs{{1, "d@example.com"}, {2, "domain.org"}}, 4},
+				{Pairs{{1, "d@example.com"}, {2, "example.com"}}, 5},
 			},
+			compress: true,
 		},
 	} {
 		trie := New()
 		for _, op := range test.insert {
 			trie.Insert(op.p, op.v)
 		}
+		fmt.Fprint(os.Stdout, "\n\n")
 		graphviz(os.Stdout, fmt.Sprintf("test#%d", i), trie)
+		fmt.Fprint(os.Stdout, "\n\n")
+
+		if test.compress {
+			fmt.Fprintf(os.Stdout, "compressing...\n\n")
+			compress(&trie.root)
+			graphviz(os.Stdout, fmt.Sprintf("test#%d", i), trie)
+			fmt.Fprint(os.Stdout, "\n\n")
+		}
 	}
 }
+
+//func sizeOfTrie(l *leaf) (s int) {
+//	s = unsafe.SizeOf(l)
+//	for {
+//
+//	}
+//}
