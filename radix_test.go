@@ -72,9 +72,51 @@ func TestTrieInsert(t *testing.T) {
 				{Pairs{{1, "b@example.com"}, {2, "domain.org"}}, 2},
 				{Pairs{{1, "c@example.com"}, {2, "domain.org"}}, 3},
 				{Pairs{{1, "d@example.com"}, {2, "domain.org"}}, 4},
+			},
+			compress: true,
+		},
+		{
+			insert: []insert{
+				// many emails
+				{Pairs{{1, "a@example.com"}, {2, "domain.org"}}, 1},
+				{Pairs{{1, "b@example.com"}, {2, "domain.org"}}, 2},
+				{Pairs{{1, "c@example.com"}, {2, "domain.org"}}, 3},
+				{Pairs{{1, "d@example.com"}, {2, "domain.org"}}, 4},
 				{Pairs{{1, "d@example.com"}, {2, "example.com"}}, 5},
 			},
 			compress: true,
+		},
+		{
+			insert: []insert{
+				// many emails
+				{Pairs{{1, "a"}}, 1},
+				{Pairs{{1, "a"}, {2, "d"}}, 2},
+				{Pairs{{1, "b"}}, 3},
+				{Pairs{{1, "c"}, {2, "d"}}, 4},
+			},
+			compress: true,
+		},
+		{
+			insert: []insert{
+				// many emails
+				{Pairs{{1, "a"}}, 1},
+				{Pairs{{1, "a"}, {2, "d"}}, 2},
+				{Pairs{{1, "b"}}, 3},
+				{Pairs{{1, "c"}, {2, "d"}}, 4},
+				{Pairs{{1, "c"}, {2, "d"}, {3, "q"}}, 5},
+			},
+			compress: true,
+		},
+		{
+			insert: []insert{
+				// many emails
+				{Pairs{{1, "a"}}, 1},
+				{Pairs{{1, "a"}, {2, "d"}}, 2},
+				{Pairs{{1, "b"}}, 3},
+				{Pairs{{1, "c"}, {2, "d"}}, 4},
+				{Pairs{{1, "c"}, {2, "d"}, {3, "q"}}, 5},
+				{Pairs{{3, "z"}}, 6},
+			},
 		},
 	} {
 		trie := New()
@@ -93,10 +135,3 @@ func TestTrieInsert(t *testing.T) {
 		}
 	}
 }
-
-//func sizeOfTrie(l *leaf) (s int) {
-//	s = unsafe.SizeOf(l)
-//	for {
-//
-//	}
-//}

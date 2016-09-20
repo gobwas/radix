@@ -4,11 +4,12 @@ import (
 	"fmt"
 	"io"
 	"sync/atomic"
+	"unsafe"
 )
 
 func graphviz(w io.Writer, label string, t *Trie) {
 	id := new(int64)
-	fmt.Fprintf(w, `digraph G {graph[label="%s"];`, label)
+	fmt.Fprintf(w, `digraph G {graph[label="%s(%vb)"];`, label, t.root.size())
 	graphvizLeaf(w, "root", &t.root, id)
 	fmt.Fprint(w, `}`)
 }
@@ -35,6 +36,31 @@ func graphvizLeaf(w io.Writer, value string, l *leaf, id *int64) int64 {
 		fmt.Fprintf(w, `"%v"->"%v";`, i, cid)
 	}
 	return i
+}
+
+func (l *leaf) size() (s uintptr) {
+	s += unsafe.Sizeof(l)
+	s += unsafe.Sizeof(l.data)
+	for _, v := range l.data {
+		s += unsafe.Sizeof(v)
+	}
+	s += unsafe.Sizeof(l.node)
+	if l.node != nil {
+		s += l.node.size()
+	}
+	return
+}
+
+func (n *node) size() (s uintptr) {
+	s += unsafe.Sizeof(n)
+	s += unsafe.Sizeof(n.key)
+	s += uintptr(len(n.val)) + unsafe.Sizeof(n.val)
+	s += unsafe.Sizeof(n.values)
+	for val, leaf := range n.values {
+		s += uintptr(len(val)) + unsafe.Sizeof(val)
+		s += leaf.size()
+	}
+	return
 }
 
 func graphvizData(w io.Writer, data []int, id *int64) int64 {

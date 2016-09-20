@@ -77,8 +77,8 @@ func compress(parent *leaf) {
 				}
 
 				// merge l.node.values with nn.values
-				for _, lf := range l.node.values {
-					nlf := nn.get(candidate.val)
+				for v, lf := range l.node.values {
+					nlf := nn.get(v)
 					ch := nlf.ensureChild(n.key)
 					chlf := ch.get(k)
 					chlf.data = lf.data
@@ -118,14 +118,18 @@ func (n *node) has(k string) (ok bool) {
 	return
 }
 
+func (n *node) set(v string, l *leaf) {
+	if n.values == nil {
+		n.values = make(map[string]*leaf)
+	}
+	n.values[v] = l
+}
+
 func (n *node) get(v string) *leaf {
 	l, ok := n.values[v]
 	if !ok {
-		if n.values == nil {
-			n.values = make(map[string]*leaf)
-		}
 		l = &leaf{}
-		n.values[v] = l
+		n.set(v, l)
 	}
 	return l
 }
@@ -141,7 +145,7 @@ func (n *node) cutChain(val string) (ret *leaf) {
 func (n *node) addChain(val string, m *leaf) {
 	_, ok := n.values[val]
 	if !ok {
-		n.values[val] = m
+		n.set(val, m)
 		return
 	}
 	panic("chain already exists")
