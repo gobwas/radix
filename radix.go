@@ -1,5 +1,7 @@
 package radix
 
+import "fmt"
+
 type Trie struct {
 	root leaf
 }
@@ -14,16 +16,14 @@ func (t *Trie) Insert(p Pairs, v int) {
 	t.root.insert(p, v)
 }
 
-// checks by boyer-moore voting algorithm.
-func compress(parent *leaf) {
-	n := parent.node
-	if n == nil {
-		return
-	}
-
+// major searches for highest majority element in n's values.
+// It applies boyer-moore voting algorithm.
+func major(n *node) (*node, int, int) {
+	var total int
 	var counter int
 	var candidate *node
 	for _, l := range n.values {
+		total++
 		if l.node == nil {
 			continue
 		}
@@ -38,63 +38,60 @@ func compress(parent *leaf) {
 		}
 	}
 	if candidate == nil {
-		return
+		return nil, -1, total
 	}
-
-	var total int
 	counter = 0
 	for _, l := range n.values {
-		total++
-		if l.node == nil {
-			continue
-		}
-		if l.node.key == candidate.key && l.node.has(candidate.val) {
+		if l.node != nil && l.node.key == candidate.key && l.node.has(candidate.val) {
 			counter++
 		}
 	}
 
-	// We have found more than n/2 duplicates.
-	if counter > total/2 { // could optimize!
-		nn := &node{
-			key:    candidate.key,
-			val:    candidate.val,
-			values: map[string]*leaf{},
-		}
-
-		for k, l := range n.values {
-			switch {
-			case l.node == nil || l.node.key != nn.key:
-				lf := nn.get(any)
-				ch := lf.ensureChild(n.key)
-				ch.addChain(k, n.cutChain(k))
-
-			case l.node.key == nn.key:
-				if len(l.data) > 0 {
-					lf := nn.get(any)
-					ch := lf.ensureChild(n.key)
-					clf := ch.get(k)
-					clf.data = append(clf.data, l.data...)
-				}
-
-				// merge l.node.values with nn.values
-				for v, lf := range l.node.values {
-					nlf := nn.get(v)
-					ch := nlf.ensureChild(n.key)
-					chlf := ch.get(k)
-					chlf.data = lf.data
-					chlf.node = lf.node
-					lf.node = nil
-					lf.data = nil
-				}
-			}
-		}
-
-		parent.node = nn
-	}
+	return candidate, counter, total
 }
 
-func swap() {
+func siftUp(parent *leaf, key uint) {
+	pn := parent.node
+	nn := &node{key: key}
+	for val, l := range pn.values {
+		switch {
+		case l.node == nil || l.node.key != key:
+			lf := nn.get(any)
+			ch := lf.ensureChild(pn.key)
+			ch.set(val, pn.remove(val))
 
+		case l.node.key == key:
+			if len(l.data) > 0 {
+				lf := nn.get(any)
+				ch := lf.ensureChild(pn.key)
+				clf := ch.get(val)
+				clf.data = append(clf.data, l.data...)
+			}
+
+			// merge l.node.values with nn.values
+			for v, lf := range l.node.values {
+				nlf := nn.get(v)
+				ch := nlf.ensureChild(pn.key)
+				chlf := ch.get(val)
+				chlf.data = lf.data
+				chlf.node = lf.node
+				lf.node = nil
+				lf.data = nil
+			}
+		}
+	}
+	parent.node = nn
+}
+
+func compress(parent *leaf) {
+	pn := parent.node
+	if pn == nil {
+		return
+	}
+	m, met, total := major(pn)
+	if met > total/2 {
+		siftUp(parent, m.key)
+	}
 }
 
 func (t *Trie) Delete() {
@@ -118,37 +115,30 @@ func (n *node) has(k string) (ok bool) {
 	return
 }
 
-func (n *node) set(v string, l *leaf) {
+func (n *node) set(val string, l *leaf) {
 	if n.values == nil {
 		n.values = make(map[string]*leaf)
+	} else if _, ok := n.values[val]; ok {
+		panic(fmt.Sprintf("branch %v is already exists on node %v", val, n.key))
 	}
-	n.values[v] = l
+	n.values[val] = l
 }
 
-func (n *node) get(v string) *leaf {
-	l, ok := n.values[v]
+func (n *node) get(val string) *leaf {
+	l, ok := n.values[val]
 	if !ok {
 		l = &leaf{}
-		n.set(v, l)
+		n.set(val, l)
 	}
 	return l
 }
 
-func (n *node) cutChain(val string) (ret *leaf) {
+func (n *node) remove(val string) *leaf {
 	ret, ok := n.values[val]
 	if ok {
 		delete(n.values, val)
 	}
-	return
-}
-
-func (n *node) addChain(val string, m *leaf) {
-	_, ok := n.values[val]
-	if !ok {
-		n.set(val, m)
-		return
-	}
-	panic("chain already exists")
+	return ret
 }
 
 type leaf struct {
@@ -163,7 +153,7 @@ func (l *leaf) ensureChild(key uint) (ret *node) {
 	} else if l.node.key == key {
 		ret = l.node
 	} else {
-		panic("could not return child")
+		panic(fmt.Sprintf("leaf has child %v; want %v", l.node.key, key))
 	}
 	return
 }
