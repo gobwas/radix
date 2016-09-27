@@ -13,14 +13,15 @@ import (
 	"github.com/gobwas/radix"
 )
 
-var sift = flag.Uint("sift", 0, "which key to sift up in the node")
+var sift = flag.String("sift", "", "which key to sift up in the trie")
+var del = flag.String("del", "", "which key to delete in the trie")
+var siftN = flag.Int("sift_times", 1, "how much to sift up found node")
 var label = flag.String("label", "radix.Trie", "label to draw in graphviz diagram")
 
-func scanPath(r io.Reader) (path radix.Pairs, val int, err error) {
+func scanPath(r io.Reader) (path radix.Pairs, number string, err error) {
 	ws := bufio.NewScanner(r)
 	ws.Split(bufio.ScanWords)
 	var i int
-	var number string
 	var key uint64
 	for ws.Scan() {
 		i++
@@ -35,10 +36,16 @@ func scanPath(r io.Reader) (path radix.Pairs, val int, err error) {
 			number = txt
 		}
 	}
-	if i%2 != 1 {
-		return nil, 0, fmt.Errorf("even path pairs")
+	return
+}
+
+func scanPathVal(r io.Reader) (path radix.Pairs, val int, err error) {
+	var rem string
+	path, rem, err = scanPath(r)
+	if err != nil {
+		return
 	}
-	v, err := strconv.ParseInt(number, 10, 64)
+	v, err := strconv.ParseInt(rem, 10, 64)
 	if err != nil {
 		return
 	}
@@ -59,17 +66,40 @@ func main() {
 	ls := bufio.NewScanner(os.Stdin)
 	ls.Split(bufio.ScanLines)
 	for ls.Scan() {
-		path, val, err := scanPath(bytes.NewReader(ls.Bytes()))
+		path, val, err := scanPathVal(bytes.NewReader(ls.Bytes()))
 		if err != nil {
 			fatal(err)
 		}
 		t.Insert(path, val)
 	}
 
+	// initial tree
 	radix.Graphviz(os.Stdout, *label, t)
-	if *sift != 0 {
-		radix.SiftUp(t, *sift)
-		fmt.Fprint(os.Stdout, "\n")
-		radix.Graphviz(os.Stdout, *label, t)
+
+	if *sift != "" {
+		path, _, err := scanPath(strings.NewReader(*sift))
+		if err != nil {
+			fatal(err)
+		}
+		n := radix.SearchNode(t, path)
+		if n != nil {
+			for i := 0; i < *siftN; i++ {
+				n = radix.SiftUp(n)
+				fmt.Fprint(os.Stdout, "\n")
+				radix.Graphviz(os.Stdout, *label, t)
+			}
+		}
 	}
+
+	if *del != "" {
+		path, val, err := scanPathVal(strings.NewReader(*del))
+		if err != nil {
+			fatal(err)
+		}
+		if t.Delete(path, val) {
+			fmt.Fprint(os.Stdout, "\n")
+			radix.Graphviz(os.Stdout, *label, t)
+		}
+	}
+
 }

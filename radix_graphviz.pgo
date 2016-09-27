@@ -9,37 +9,86 @@ import (
 	"unsafe"
 )
 
-func SiftUp(t *Trie, k uint) {	siftUp(&t.root, k) }
+type id struct {
+	c int64
+	n map[*node]int64
+	l map[*leaf]int64
+}
+
+func SearchNode(t *Trie, path Pairs) *node {return searchNode(t, path)}
+
+func SiftUp(n *node) *node {	return siftUp(n)	}
+
+func newID() *id {
+	return &id{
+		n: make(map[*node]int64),
+		l: make(map[*leaf]int64),
+	}
+}
+
+func (id *id) node(n *node) int64 {
+	if _, ok := id.n[n]; !ok {
+		id.n[n] = id.next()
+	}
+	return id.n[n]
+}
+
+func (id *id) leaf(l *leaf) int64 {
+	if _, ok := id.l[l]; !ok {
+		id.l[l] = id.next()
+	}
+	return id.l[l]
+}
+
+func (id *id) next() int64 {
+	return atomic.AddInt64(&id.c, 1)
+}
+
 
 func Graphviz(w io.Writer, label string, t *Trie) {
-	id := new(int64)
-	fmt.Fprintf(w, `digraph G {graph[label="%s(%vb)"];`, label, t.root.size())
-	graphvizLeaf(w, "root", &t.root, id)
+	fmt.Fprintf(w, `digraph G {graph[label="%s(%vb)"]; node[style=filled];`, label, t.root.size())
+	graphvizLeaf(w, "root", &t.root, newID())
 	fmt.Fprint(w, `}`)
 }
 
-func graphvizNode(w io.Writer, n *node, id *int64) int64 {
-	i := nextID(id)
-	fmt.Fprintf(w, `"%v"[label="%v"];`, i, n.key)
+func graphvizNode(w io.Writer, n *node, id *id) int64 {
+	i := id.node(n)
+	fmt.Fprintf(w, `"%v"[label="%v" fillcolor="#ffffff"];`, i, n.key)
 	for key, l := range n.values {
 		lid := graphvizLeaf(w, key, l, id)
-		fmt.Fprintf(w, `"%v"->"%v";`, i, lid)
+		child(w, i, lid)
+	}
+	if n.parent != nil {
+		cid := id.leaf(n.parent)
+		parent(w, i, cid)		
 	}
 	return i
 }
 
-func graphvizLeaf(w io.Writer, value string, l *leaf, id *int64) int64 {
-	i := nextID(id)
-	fmt.Fprintf(w, `"%v"[label="%v"];`, i, value)
+func graphvizLeaf(w io.Writer, value string, l *leaf, id *id) int64 {
+	i := id.leaf(l)
+	fmt.Fprintf(w, `"%v"[label="%v" fillcolor="#bef1cf"];`, i, value)
 	if len(l.data) > 0 {
 		d := graphvizData(w, l.data, id)
 		fmt.Fprintf(w, `"%v"->"%v"[style=dashed,dir=none];`, i, d)
 	}
-	if l.node != nil {
-		cid := graphvizNode(w, l.node, id)
-		fmt.Fprintf(w, `"%v"->"%v";`, i, cid)
+	if l.child != nil {
+		cid := graphvizNode(w, l.child, id)
+		child(w, i, cid)
+	}
+	if l.parent != nil {
+		cid := id.node(l.parent)
+		parent(w, i, cid)		
 	}
 	return i
+}
+
+func parent(w io.Writer, a, b int64) {
+		fmt.Fprintf(w, `"%v"->"%v"[dir=forward style=dashed color="#cccccc"];`, a, b)
+}
+
+func child(w io.Writer, a, b int64) {
+		fmt.Fprintf(w, `"%v"->"%v"[dir=forward];`, a, b)
 }
 
 func (l *leaf) size() (s uintptr) {
@@ -48,9 +97,10 @@ func (l *leaf) size() (s uintptr) {
 	for _, v := range l.data {
 		s += unsafe.Sizeof(v)
 	}
-	s += unsafe.Sizeof(l.node)
-	if l.node != nil {
-		s += l.node.size()
+	s += unsafe.Sizeof(l.child)
+	s += unsafe.Sizeof(l.parent)
+	if l.child != nil {
+		s += l.child.size()
 	}
 	return
 }
@@ -58,6 +108,7 @@ func (l *leaf) size() (s uintptr) {
 func (n *node) size() (s uintptr) {
 	s += unsafe.Sizeof(n)
 	s += unsafe.Sizeof(n.key)
+	s += unsafe.Sizeof(n.parent)
 	s += uintptr(len(n.val)) + unsafe.Sizeof(n.val)
 	s += unsafe.Sizeof(n.values)
 	for val, leaf := range n.values {
@@ -67,7 +118,7 @@ func (n *node) size() (s uintptr) {
 	return
 }
 
-func graphvizData(w io.Writer, data []int, id *int64) int64 {
+func graphvizData(w io.Writer, data []int, id *id) int64 {
 	var str string
 	for i, v := range data {
 		if i > 0 {
@@ -75,8 +126,8 @@ func graphvizData(w io.Writer, data []int, id *int64) int64 {
 		}
 		str += fmt.Sprintf("%v", v)
 	}
-	n := nextID(id)
-	fmt.Fprintf(w, `"%v"[label="%v",shape=polygon];`, n, str)
+	n := id.next()
+	fmt.Fprintf(w, `"%v"[label="%v" fillcolor="#cccccc" shape=polygon];`, n, str)
 	return n
 }
 
