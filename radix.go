@@ -60,25 +60,38 @@ func (t *Trie) Lookup(path Pairs, it Iterator) {
 	})
 }
 
+type lookupFn func(*node, Pairs, leafIterator) bool
+
+func checkLeaf(lf *leaf, path Pairs, it leafIterator, lookup lookupFn) bool {
+	if !it(lf) {
+		return false
+	}
+	if lf.child != nil && !lookup(lf.child, path, it) {
+		return false
+	}
+	return true
+}
+
+// greedyLookup searches values in greedy manner.
+// It first searches all strict equal leafs.
+// Then in searches all 'any' valued leafs.
+// If node has key k, and it is not present in path, then it will
+// dig in all leafs of node.
 func greedyLookup(n *node, path Pairs, it leafIterator) (ret bool) {
 	pw, v, ok := path.without(n.key)
-	if ok && n.has(v) {
-		lf := n.leaf(v)
-		if !it(lf) {
-			return false
+	if !ok {
+		for _, lf := range n.values {
+			if !checkLeaf(lf, pw, it, greedyLookup) {
+				return false
+			}
 		}
-		if lf.child != nil && !greedyLookup(lf.child, pw, it) {
-			return false
-		}
+		return true
 	}
-	if n.has(any) {
-		lf := n.leaf(any)
-		if !it(lf) {
-			return false
-		}
-		if lf.child != nil && !greedyLookup(lf.child, pw, it) {
-			return false
-		}
+	if n.has(v) && !checkLeaf(n.leaf(v), pw, it, greedyLookup) {
+		return false
+	}
+	if n.has(any) && !checkLeaf(n.leaf(any), pw, it, greedyLookup) {
+		return false
 	}
 	return true
 }
@@ -86,17 +99,14 @@ func greedyLookup(n *node, path Pairs, it leafIterator) (ret bool) {
 func strictLookup(n *node, path Pairs, it leafIterator) bool {
 	pw, v, ok := path.without(n.key)
 	if !ok {
-		v = any
+		for _, lf := range n.values {
+			if !checkLeaf(lf, pw, it, strictLookup) {
+				return false
+			}
+		}
+		return true
 	}
-	fmt.Println("strict lookup:", n.key, v, path)
-	if !n.has(v) {
-		return false
-	}
-	lf := n.leaf(v)
-	if !it(lf) {
-		return false
-	}
-	if lf.child != nil && !strictLookup(lf.child, pw, it) {
+	if n.has(v) && !checkLeaf(n.leaf(v), pw, it, strictLookup) {
 		return false
 	}
 	return true
@@ -381,5 +391,6 @@ func (pairs Pairs) without(k uint) (ret Pairs, val string, ok bool) {
 			return
 		}
 	}
+	ret = pairs
 	return
 }

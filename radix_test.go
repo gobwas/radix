@@ -95,26 +95,25 @@ func TestTrieInsertDelete(t *testing.T) {
 			expect: []int{2, 4, 5},
 		},
 	} {
+		trie := New()
+		for _, op := range test.insert {
+			trie.Insert(op.p, op.v)
+		}
 		for _, del := range test.delete {
-			trie := New()
-			for _, op := range test.insert {
-				trie.Insert(op.p, op.v)
-			}
 			if del.ok != trie.Delete(del.p, del.v) {
 				t.Errorf("[%d] Delete(%v, %v) = %v; want %v", i, del.p, del.v, !del.ok, del.ok)
-				continue
 			}
-			var result []int
-			trie.Lookup(nil, func(v int) bool {
-				result = append(result, v)
-				return true
-			})
-			if !listEq(result, test.expect) {
-				t.Errorf(
-					"[%d] after Delete(%v, %v); Lookup(%v) = %v; want %v",
-					i, del.p, del.v, Pairs{}, result, test.expect,
-				)
-			}
+		}
+		var result []int
+		trie.Lookup(nil, func(v int) bool {
+			result = append(result, v)
+			return true
+		})
+		if !listEq(result, test.expect) {
+			t.Errorf(
+				"[%d] after Delete; Lookup(%v) = %v; want %v",
+				i, Pairs{}, result, test.expect,
+			)
 		}
 	}
 }
