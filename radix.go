@@ -8,56 +8,63 @@ type Iterator func(int) bool
 type leafIterator func(*leaf) bool
 
 type Trie struct {
-	root  leaf
-	nodes map[uint]*node
+	root leaf
+	heap *Heap
 }
 
 func New() *Trie {
 	return &Trie{
-		nodes: make(map[uint]*node),
+		heap: NewHeap(2, 0),
 	}
 }
 
 func (t *Trie) Insert(p Pairs, v int) {
 	if p == nil || p.Len() == 0 {
-		t.root.data = append(t.root.data, v)
+		t.root.append(v)
 		return
 	}
-	if t.root.child == nil {
-		t.root.child = makeTree(p, v, t.indexNode)
-		t.root.child.parent = &t.root
+	var n *node
+	for _, c := range t.root.children {
+		if p.has(c.key) && (n == nil || t.heap.Less(n, c)) {
+			n = c
+		}
+	}
+	if n != nil {
+		n.insert(p, v, t.indexNode)
 		return
 	}
-	t.root.child.insert(p, v, t.indexNode)
+	n = makeTree(p, v, t.indexNode)
+	t.root.addChild(n)
 }
 
 func (t *Trie) Delete(path Pairs, v int) (ok bool) {
 	if path == nil || path.Len() == 0 {
 		return t.root.remove(v)
 	}
-	if t.root.child == nil {
-		return
+	for _, child := range t.root.children {
+		strictLookup(child, path, func(l *leaf) bool {
+			// todo use storage interface
+			if l.remove(v) {
+				ok = true
+			}
+			return true
+		})
 	}
-	strictLookup(t.root.child, path, func(l *leaf) bool {
-		// todo use storage interface
-		if l.remove(v) {
-			ok = true
-		}
-		return true
-	})
 	return
 }
 
 func (t *Trie) Lookup(path Pairs, it Iterator) {
-	if !t.root.iterate(it) || t.root.child == nil {
+	if !t.root.iterate(it) {
 		return
 	}
-	greedyLookup(t.root.child, path, func(l *leaf) bool {
-		if !l.iterate(it) {
-			return false
-		}
-		return true
-	})
+	for _, child := range t.root.children {
+		greedyLookup(child, path, func(l *leaf) bool {
+			if !l.iterate(it) {
+				return false
+			}
+			return true
+		})
+	}
 }
 
 type lookupFn func(*node, Pairs, leafIterator) bool
@@ -66,8 +73,10 @@ func checkLeaf(lf *leaf, path Pairs, it leafIterator, lookup lookupFn) bool {
 	if !it(lf) {
 		return false
 	}
-	if lf.child != nil && !lookup(lf.child, path, it) {
-		return false
+	for _, child := range lf.children {
+		if !lookup(child, path, it) {
+			return false
+		}
 	}
 	return true
 }
@@ -112,25 +121,29 @@ func strictLookup(n *node, path Pairs, it leafIterator) bool {
 	return true
 }
 
-func searchNode(t *Trie, path Pairs) *node {
-	if t.root.child == nil {
-		return nil
-	}
-	n := t.root.child
-	var v string
-	var ok bool
-	for path.Len() > 0 && n != nil {
-		path, v, ok = path.without(n.key)
-		if !ok || !n.has(v) {
-			return nil
+func search(lf *leaf, path Pairs) (ret []*node) {
+	for _, child := range lf.children {
+		p, v, ok := path.without(child.key)
+		if ok && child.has(v) {
+			if p.Len() == 0 {
+				ret = append(ret, child)
+			} else {
+				ret = append(ret, search(child.leaf(v), p)...)
+			}
 		}
-		n = n.leaf(v).child
 	}
-	return n
+	return
+}
+
+func searchNode(t *Trie, path Pairs) *node {
+	if n := search(&t.root, path); len(n) > 0 {
+		return n[0]
+	}
+	return nil
 }
 
 func (t *Trie) indexNode(n *node) {
-	t.nodes[n.key] = n
+	t.heap.Insert(n)
 }
 
 type nodeIndexer func(n *node)
@@ -142,18 +155,17 @@ func major(n *node) (*node, int, int) {
 	var counter int
 	var candidate *node
 	for _, l := range n.values {
-		total++
-		if l.child == nil {
-			continue
-		}
-		switch {
-		case counter == 0:
-			candidate = l.child
-			counter = 1
-		case l.child.key == candidate.key && l.child.has(candidate.val):
-			counter++
-		default:
-			counter--
+		for _, child := range l.children {
+			total++
+			switch {
+			case counter == 0:
+				candidate = child
+				counter = 1
+			case child.key == candidate.key && child.has(candidate.val):
+				counter++
+			default:
+				counter--
+			}
 		}
 	}
 	if candidate == nil {
@@ -161,8 +173,10 @@ func major(n *node) (*node, int, int) {
 	}
 	counter = 0
 	for _, l := range n.values {
-		if l.child != nil && l.child.key == candidate.key && l.child.has(candidate.val) {
-			counter++
+		for _, child := range l.children {
+			if child.key == candidate.key && child.has(candidate.val) {
+				counter++
+			}
 		}
 	}
 	return candidate, counter, total
@@ -173,6 +187,9 @@ func major(n *node) (*node, int, int) {
 func siftUp(n *node) *node {
 	pLeaf := n.parent     // parent leaf
 	pNode := pLeaf.parent // parent node
+	if pNode == nil {
+		return n
+	}
 	root := pNode.parent
 	if root == nil { // could not perform rotation
 		return n
@@ -183,41 +200,49 @@ func siftUp(n *node) *node {
 		parent: root,
 	}
 	for val, l := range pNode.values {
-		switch {
-		case l.child == nil || l.child.key != n.key:
-			lf := nn.leaf(any)
-			ch := lf.ensureChild(pNode.key)
-			ch.set(val, pNode.remove(val)) // todo could copy pNode's val, to be like immutable
-
-		case l.child.key == n.key:
-			if len(l.data) > 0 {
-				lf := nn.leaf(any)
-				chn := lf.ensureChild(pNode.key)
-				clf := chn.leaf(val)
-				clf.data = append(clf.data, l.data...)
+		for _, child := range l.children {
+			l.removeChild(child.key)
+			if l.empty() {
+				pNode.remove(val)
 			}
 
-			// merge l.child.values with nn.values
-			for v, lf := range l.child.values {
-				nlf := nn.leaf(v)
-				chn := nlf.ensureChild(pNode.key)
+			switch {
+			case child.key != n.key:
 
-				chlf := chn.leaf(val)
-				chlf.data = lf.data
-				chlf.child = lf.child
-				if chlf.child != nil {
-					chlf.child.parent = chlf
+				lf := nn.leaf(any)
+				ch := lf.getChild(pNode.key)
+				chlf := ch.leaf(val)
+				chlf.addChild(child)
+				//ch.set(val, pNode.remove(val)) // todo could copy pNode's val, to be like immutable
+
+			case child.key == n.key:
+				if len(l.data) > 0 {
+					lf := nn.leaf(any)
+					chn := lf.getChild(pNode.key)
+					clf := chn.leaf(val)
+					clf.append(l.data...)
 				}
 
-				// cleanup
-				//lf.data = nil
-				//lf.child = nil
-				//lf.parent = nil
+				// merge l.child.values with nn.values
+				for v, lf := range child.values {
+					nlf := nn.leaf(v)
+					chn := nlf.getChild(pNode.key)
+
+					chlf := chn.leaf(val)
+					chlf.data = lf.data
+					chlf.children = lf.children
+					for _, c := range chlf.children {
+						c.parent = chlf
+					}
+					// cleanup
+					lf.data = nil
+					lf.children = nil
+					lf.parent = nil
+				}
 			}
 		}
 	}
-	nn.parent = root
-	root.child = nn
+	root.addChild(nn)
 	return nn
 }
 
@@ -271,6 +296,7 @@ func (n *node) remove(val string) *leaf {
 }
 
 func (n *node) insert(path Pairs, value int, cb nodeIndexer) {
+insertion:
 	for {
 		pw, v, ok := path.without(n.key)
 		if ok {
@@ -280,37 +306,63 @@ func (n *node) insert(path Pairs, value int, cb nodeIndexer) {
 		}
 		l := n.leaf(v)
 		if path.Len() == 0 {
-			l.data = append(l.data, value)
+			l.append(value)
 			return
 		}
-		if n = l.child; n == nil {
-			// Create whole chain of p with v at the end.
-			l.child = makeTree(path, value, cb)
-			l.child.parent = l
-			return
+		for _, child := range l.children {
+			if path.has(child.key) {
+				n = child
+				continue insertion
+			}
 		}
+		// Create whole chain of p with v at the end.
+		l.addChild(makeTree(path, value, cb))
+		return
 	}
 }
 
 type leaf struct {
-	data   []int
-	child  *node
-	parent *node
+	data     []int
+	children map[uint]*node
+	parent   *node
 }
 
-func (l *leaf) ensureChild(key uint) (ret *node) {
-	if l.child == nil {
-		ret = &node{
-			key:    key,
-			parent: l,
-		}
-		l.child = ret
-	} else if l.child.key == key {
-		ret = l.child
-	} else {
-		panic(fmt.Sprintf("leaf has child %v; want %v", l.child.key, key))
+func (l *leaf) has(key uint) bool {
+	_, ok := l.children[key]
+	return ok
+}
+
+func (l *leaf) addChild(n *node) {
+	if _, has := l.children[n.key]; has {
+		panic(fmt.Sprintf("leaf already has child with key %v", n.key))
+	}
+	if l.children == nil {
+		l.children = make(map[uint]*node)
+	}
+	l.children[n.key] = n
+	n.parent = l
+}
+
+func (l *leaf) removeChild(key uint) {
+	delete(l.children, key)
+}
+
+func (l *leaf) getChild(key uint) (ret *node) {
+	var ok bool
+	ret, ok = l.children[key]
+	if !ok {
+		ret = &node{key: key}
+		l.addChild(ret)
 	}
 	return
+}
+
+func (l *leaf) empty() bool {
+	return len(l.children) == 0
+}
+
+func (l *leaf) append(v ...int) {
+	l.data = append(l.data, v...)
 }
 
 // todo use store
@@ -339,32 +391,21 @@ func (l *leaf) iterate(it Iterator) bool {
 
 func makeTree(p Pairs, v int, cb nodeIndexer) *node {
 	n := p.Len()
-	// Make the last one node.
-	cl := &leaf{
-		data: []int{v},
-	}
 	cn := &node{
 		key: p[n-1].Key,
-		values: map[string]*leaf{
-			p[n-1].Value: cl,
-		},
 		val: p[n-1].Value,
 	}
-	cl.parent = cn
+	cl := cn.leaf(p[n-1].Value)
+	cl.append(v)
 	cb(cn)
 	for i := n - 2; i >= 0; i-- {
-		l := &leaf{
-			child: cn,
-		}
 		n := &node{
 			key: p[i].Key,
-			values: map[string]*leaf{
-				p[i].Value: l,
-			},
 			val: p[i].Value,
 		}
-		l.parent = n
-		cn.parent = l
+		l := n.leaf(p[i].Value)
+		l.addChild(cn)
+
 		cb(n)
 		cn, cl = n, l
 	}
@@ -379,6 +420,15 @@ type Pair struct {
 type Pairs []Pair
 
 func (p Pairs) Len() int { return len(p) }
+
+func (pairs Pairs) has(k uint) bool {
+	for _, p := range pairs {
+		if p.Key == k {
+			return true
+		}
+	}
+	return false
+}
 
 func (pairs Pairs) without(k uint) (ret Pairs, val string, ok bool) {
 	for i, p := range pairs {

@@ -82,6 +82,7 @@ func main() {
 			fatal(err)
 		}
 		n := radix.SearchNode(t, path)
+		fmt.Printf("search node: %v = %v\n", path, n)
 		if n != nil {
 			for i := 0; i < *siftN; i++ {
 				n = radix.SiftUp(n)

@@ -5,24 +5,50 @@ import (
 	"testing"
 )
 
-type item struct {
+type record struct {
 	p Pairs
 	v int
 }
 
 type del struct {
-	item
+	record
 	ok bool
+}
+
+func TestTrieInsert(t *testing.T) {
+	for i, test := range []struct {
+		insert Pairs
+		values []int
+	}{
+		{
+			insert: Pairs{{1, "a"}, {2, "b"}},
+			values: []int{1, 2, 3, 4},
+		},
+	} {
+		trie := New()
+		for _, v := range test.values {
+			trie.Insert(test.insert, v)
+		}
+		trie.heap.Ascend(func(x *node) bool {
+			if x.key != 2 {
+				return true
+			}
+			if !listEq(x.leaf("b").data, test.values) {
+				t.Errorf("[%d] leaf values is %v; want %v", i, x.leaf("b").data, test.values)
+			}
+			return false
+		})
+	}
 }
 
 func TestTrieInsertLookup(t *testing.T) {
 	for i, test := range []struct {
-		insert []item
+		insert []record
 		lookup []Pairs
 		expect []int
 	}{
 		{
-			insert: []item{
+			insert: []record{
 				{Pairs{{1, "a"}, {2, "b"}}, 1},
 			},
 			lookup: []Pairs{
@@ -32,7 +58,7 @@ func TestTrieInsertLookup(t *testing.T) {
 			expect: []int{1},
 		},
 		{
-			insert: []item{
+			insert: []record{
 				{Pairs{{1, "a"}, {2, "b"}}, 1},
 				{Pairs{{1, "a"}, {2, "b"}}, 2},
 				{Pairs{{1, "a"}}, 3},
@@ -66,21 +92,21 @@ func TestTrieInsertLookup(t *testing.T) {
 
 func TestTrieInsertDelete(t *testing.T) {
 	for i, test := range []struct {
-		insert []item
+		insert []record
 		delete []del
 		expect []int
 	}{
 		{
-			insert: []item{
+			insert: []record{
 				{Pairs{{1, "a"}, {2, "b"}}, 1},
 			},
 			delete: []del{
-				{item{Pairs{{1, "a"}, {2, "b"}}, 1}, true},
+				{record{Pairs{{1, "a"}, {2, "b"}}, 1}, true},
 			},
 			expect: []int{},
 		},
 		{
-			insert: []item{
+			insert: []record{
 				{Pairs{{1, "a"}, {2, "b"}}, 1},
 				{Pairs{{1, "a"}, {2, "b"}}, 2},
 				{Pairs{{1, "a"}}, 3},
@@ -88,9 +114,9 @@ func TestTrieInsertDelete(t *testing.T) {
 				{Pairs{}, 5},
 			},
 			delete: []del{
-				{item{Pairs{{1, "a"}, {2, "b"}}, 1}, true},
-				{item{Pairs{{1, "a"}}, 3}, true},
-				{item{Pairs{{1, "a"}}, 4}, false},
+				{record{Pairs{{1, "a"}, {2, "b"}}, 1}, true},
+				{record{Pairs{{1, "a"}}, 3}, true},
+				{record{Pairs{{1, "a"}}, 4}, false},
 			},
 			expect: []int{2, 4, 5},
 		},
