@@ -1,6 +1,8 @@
 package radix
 
-import "fmt"
+import (
+	"fmt"
+)
 
 const any = "*"
 
@@ -18,8 +20,8 @@ func New() *Trie {
 	}
 }
 
-func (t *Trie) Insert(p Pairs, v int) {
-	if p == nil || p.Len() == 0 {
+func (t *Trie) Insert(p Path, v int) {
+	if p.Len() == 0 {
 		t.root.data = append(t.root.data, v)
 		return
 	}
@@ -31,8 +33,8 @@ func (t *Trie) Insert(p Pairs, v int) {
 	t.root.child.insert(p, v, t.indexNode)
 }
 
-func (t *Trie) Delete(path Pairs, v int) (ok bool) {
-	if path == nil || path.Len() == 0 {
+func (t *Trie) Delete(path Path, v int) (ok bool) {
+	if path.Len() == 0 {
 		return t.root.remove(v)
 	}
 	if t.root.child == nil {
@@ -48,7 +50,7 @@ func (t *Trie) Delete(path Pairs, v int) (ok bool) {
 	return
 }
 
-func (t *Trie) Lookup(path Pairs, it Iterator) {
+func (t *Trie) Lookup(path Path, it Iterator) {
 	if !t.root.iterate(it) || t.root.child == nil {
 		return
 	}
@@ -60,9 +62,9 @@ func (t *Trie) Lookup(path Pairs, it Iterator) {
 	})
 }
 
-type lookupFn func(*node, Pairs, leafIterator) bool
+type lookupFn func(*node, Path, leafIterator) bool
 
-func checkLeaf(lf *leaf, path Pairs, it leafIterator, lookup lookupFn) bool {
+func checkLeaf(lf *leaf, path Path, it leafIterator, lookup lookupFn) bool {
 	if !it(lf) {
 		return false
 	}
@@ -77,8 +79,8 @@ func checkLeaf(lf *leaf, path Pairs, it leafIterator, lookup lookupFn) bool {
 // Then in searches all 'any' valued leafs.
 // If node has key k, and it is not present in path, then it will
 // dig in all leafs of node.
-func greedyLookup(n *node, path Pairs, it leafIterator) (ret bool) {
-	pw, v, ok := path.without(n.key)
+func greedyLookup(n *node, path Path, it leafIterator) (ret bool) {
+	pw, v, ok := path.Without(n.key)
 	if !ok {
 		for _, lf := range n.values {
 			if !checkLeaf(lf, pw, it, greedyLookup) {
@@ -96,8 +98,8 @@ func greedyLookup(n *node, path Pairs, it leafIterator) (ret bool) {
 	return true
 }
 
-func strictLookup(n *node, path Pairs, it leafIterator) bool {
-	pw, v, ok := path.without(n.key)
+func strictLookup(n *node, path Path, it leafIterator) bool {
+	pw, v, ok := path.Without(n.key)
 	if !ok {
 		for _, lf := range n.values {
 			if !checkLeaf(lf, pw, it, strictLookup) {
@@ -112,7 +114,7 @@ func strictLookup(n *node, path Pairs, it leafIterator) bool {
 	return true
 }
 
-func searchNode(t *Trie, path Pairs) *node {
+func searchNode(t *Trie, path Path) *node {
 	if t.root.child == nil {
 		return nil
 	}
@@ -120,7 +122,7 @@ func searchNode(t *Trie, path Pairs) *node {
 	var v string
 	var ok bool
 	for path.Len() > 0 && n != nil {
-		path, v, ok = path.without(n.key)
+		path, v, ok = path.Without(n.key)
 		if !ok || !n.has(v) {
 			return nil
 		}
@@ -270,9 +272,9 @@ func (n *node) remove(val string) *leaf {
 	return ret
 }
 
-func (n *node) insert(path Pairs, value int, cb nodeIndexer) {
+func (n *node) insert(path Path, value int, cb nodeIndexer) {
 	for {
-		pw, v, ok := path.without(n.key)
+		pw, v, ok := path.Without(n.key)
 		if ok {
 			path = pw
 		} else {
@@ -337,18 +339,18 @@ func (l *leaf) iterate(it Iterator) bool {
 	return true
 }
 
-func makeTree(p Pairs, v int, cb nodeIndexer) *node {
+func makeTree(p Path, v int, cb nodeIndexer) *node {
 	n := p.Len()
 	// Make the last one node.
 	cl := &leaf{
 		data: []int{v},
 	}
 	cn := &node{
-		key: p[n-1].Key,
+		key: p.At(n - 1).Key,
 		values: map[string]*leaf{
-			p[n-1].Value: cl,
+			p.At(n - 1).Value: cl,
 		},
-		val: p[n-1].Value,
+		val: p.At(n - 1).Value,
 	}
 	cl.parent = cn
 	cb(cn)
@@ -357,11 +359,11 @@ func makeTree(p Pairs, v int, cb nodeIndexer) *node {
 			child: cn,
 		}
 		n := &node{
-			key: p[i].Key,
+			key: p.At(i).Key,
 			values: map[string]*leaf{
-				p[i].Value: l,
+				p.At(i).Value: l,
 			},
-			val: p[i].Value,
+			val: p.At(i).Value,
 		}
 		l.parent = n
 		cn.parent = l
@@ -369,28 +371,4 @@ func makeTree(p Pairs, v int, cb nodeIndexer) *node {
 		cn, cl = n, l
 	}
 	return cn
-}
-
-type Pair struct {
-	Key   uint
-	Value string
-}
-
-type Pairs []Pair
-
-func (p Pairs) Len() int { return len(p) }
-
-func (pairs Pairs) without(k uint) (ret Pairs, val string, ok bool) {
-	for i, p := range pairs {
-		if ok = p.Key == k; ok {
-			n := len(pairs)
-			ret = make(Pairs, n-1)
-			copy(ret[:i], pairs[:i])
-			copy(ret[i:], pairs[i+1:])
-			val = p.Value
-			return
-		}
-	}
-	ret = pairs
-	return
 }
