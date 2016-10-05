@@ -82,11 +82,14 @@ func main() {
 			fatal(err)
 		}
 		n := radix.SearchNode(t, path)
-		fmt.Printf("search node: %v = %v\n", path, n)
 		if n != nil {
+			radix.MarkNode(n)
+			fmt.Fprint(os.Stdout, "\n\n")
+			radix.Graphviz(os.Stdout, *label, t)
+			radix.UnmarkNode(n)
 			for i := 0; i < *siftN; i++ {
 				n = radix.SiftUp(n)
-				fmt.Fprint(os.Stdout, "\n")
+				fmt.Fprint(os.Stdout, "\n\n")
 				radix.Graphviz(os.Stdout, *label, t)
 			}
 		}

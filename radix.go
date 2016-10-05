@@ -23,6 +23,7 @@ func (t *Trie) Insert(p Pairs, v int) {
 		t.root.append(v)
 		return
 	}
+	// We want to find node with maximum miss factor.
 	var n *node
 	for _, c := range t.root.children {
 		if p.has(c.key) && (n == nil || t.heap.Less(n, c)) {
@@ -38,84 +39,68 @@ func (t *Trie) Insert(p Pairs, v int) {
 }
 
 func (t *Trie) Delete(path Pairs, v int) (ok bool) {
-	if path == nil || path.Len() == 0 {
-		return t.root.remove(v)
-	}
-	for _, child := range t.root.children {
-		strictLookup(child, path, func(l *leaf) bool {
-			// todo use storage interface
-			if l.remove(v) {
-				ok = true
-			}
-			return true
-		})
-	}
+	leafLookup(&t.root, path, strictNodeLookup, func(l *leaf) bool {
+		// todo use storage interface
+		// todo maybe cleanup empty leafs without nodes
+		if l.remove(v) {
+			ok = true
+		}
+		return true
+	})
 	return
 }
 
 func (t *Trie) Lookup(path Pairs, it Iterator) {
-	if !t.root.iterate(it) {
-		return
-	}
-	for _, child := range t.root.children {
-		greedyLookup(child, path, func(l *leaf) bool {
-			if !l.iterate(it) {
-				return false
-			}
-			return true
-		})
-	}
+	leafLookup(&t.root, path, greedyNodeLookup, func(l *leaf) bool {
+		if !l.iterate(it) {
+			return false
+		}
+		return true
+	})
 }
 
-type lookupFn func(*node, Pairs, leafIterator) bool
+type nodeLookupFn func(n *node, path Pairs, it leafIterator) bool
 
-func checkLeaf(lf *leaf, path Pairs, it leafIterator, lookup lookupFn) bool {
+func leafLookup(lf *leaf, path Pairs, nodeLookup nodeLookupFn, it leafIterator) bool {
 	if !it(lf) {
 		return false
 	}
 	for _, child := range lf.children {
-		if !lookup(child, path, it) {
+		if !nodeLookup(child, path, it) {
 			return false
 		}
 	}
 	return true
 }
 
-// greedyLookup searches values in greedy manner.
-// It first searches all strict equal leafs.
-// Then in searches all 'any' valued leafs.
-// If node has key k, and it is not present in path, then it will
-// dig in all leafs of node.
-func greedyLookup(n *node, path Pairs, it leafIterator) (ret bool) {
-	pw, v, ok := path.without(n.key)
+func strictNodeLookup(n *node, path Pairs, it leafIterator) (ret bool) {
+	pw, _, ok := path.without(n.key)
 	if !ok {
-		for _, lf := range n.values {
-			if !checkLeaf(lf, pw, it, greedyLookup) {
-				return false
-			}
-		}
 		return true
 	}
-	if n.has(v) && !checkLeaf(n.leaf(v), pw, it, greedyLookup) {
-		return false
-	}
-	if n.has(any) && !checkLeaf(n.leaf(any), pw, it, greedyLookup) {
-		return false
+	for _, lf := range n.values {
+		if !leafLookup(lf, pw, strictNodeLookup, it) {
+			return false
+		}
 	}
 	return true
 }
 
-func strictLookup(n *node, path Pairs, it leafIterator) bool {
+// nodeLookup searches values in greedy manner.
+// It iterates over data of leafs, that strict equal to path.
+// If node has key k, and it is not present in path, then it will
+// dig in all leafs of node.
+func greedyNodeLookup(n *node, path Pairs, it leafIterator) (ret bool) {
 	pw, v, ok := path.without(n.key)
 	if !ok {
 		for _, lf := range n.values {
-			if !checkLeaf(lf, pw, it, strictLookup) {
+			if !leafLookup(lf, pw, greedyNodeLookup, it) {
 				return false
 			}
 		}
 		return true
 	}
-	if n.has(v) && !checkLeaf(n.leaf(v), pw, it, strictLookup) {
+	if n.has(v) && !leafLookup(n.leaf(v), pw, greedyNodeLookup, it) {
 		return false
 	}
 	return true
@@ -124,12 +109,11 @@ func strictLookup(n *node, path Pairs, it leafIterator) bool {
 func search(lf *leaf, path Pairs) (ret []*node) {
 	for _, child := range lf.children {
 		p, v, ok := path.without(child.key)
+		if p.Len() == 0 {
+			ret = append(ret, child)
+		}
 		if ok && child.has(v) {
-			if p.Len() == 0 {
-				ret = append(ret, child)
-			} else {
-				ret = append(ret, search(child.leaf(v), p)...)
-			}
+			ret = append(ret, search(child.leaf(v), p)...)
 		}
 	}
 	return
@@ -201,33 +185,25 @@ func siftUp(n *node) *node {
 	}
 	for val, l := range pNode.values {
 		for _, child := range l.children {
-			l.removeChild(child.key)
-			if l.empty() {
-				pNode.remove(val)
-			}
-
 			switch {
-			case child.key != n.key:
-
-				lf := nn.leaf(any)
-				ch := lf.getChild(pNode.key)
-				chlf := ch.leaf(val)
-				chlf.addChild(child)
-				//ch.set(val, pNode.remove(val)) // todo could copy pNode's val, to be like immutable
+			//	case child.key != n.key:
+			//		lf := nn.leaf(any)
+			//		ch := lf.getChild(pNode.key)
+			//		chlf := ch.leaf(val)
+			//		chlf.addChild(child)
+			//ch.set(val, pNode.remove(val)) // todo could copy pNode's val, to be like immutable
 
 			case child.key == n.key:
-				if len(l.data) > 0 {
-					lf := nn.leaf(any)
-					chn := lf.getChild(pNode.key)
-					clf := chn.leaf(val)
-					clf.append(l.data...)
+				l.removeChild(child.key)
+				if l.empty() {
+					pNode.remove(val)
+					if pNode.empty() {
+						root.removeChild(pNode.key)
+					}
 				}
-
-				// merge l.child.values with nn.values
 				for v, lf := range child.values {
 					nlf := nn.leaf(v)
 					chn := nlf.getChild(pNode.key)
-
 					chlf := chn.leaf(val)
 					chlf.data = lf.data
 					chlf.children = lf.children
@@ -265,6 +241,10 @@ type node struct {
 func (n *node) has(k string) (ok bool) {
 	_, ok = n.values[k]
 	return
+}
+
+func (n *node) empty() bool {
+	return len(n.values) == 0
 }
 
 func (n *node) set(val string, l *leaf) {
@@ -358,7 +338,7 @@ func (l *leaf) getChild(key uint) (ret *node) {
 }
 
 func (l *leaf) empty() bool {
-	return len(l.children) == 0
+	return len(l.children) == 0 && len(l.data) == 0
 }
 
 func (l *leaf) append(v ...int) {

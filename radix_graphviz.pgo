@@ -44,6 +44,10 @@ func (id *id) next() int64 {
 	return atomic.AddInt64(&id.c, 1)
 }
 
+var markup = map[*node]bool{}
+
+func MarkNode(n *node)   { markup[n] = true }
+func UnmarkNode(n *node) { delete(markup, n) }
 
 func Graphviz(w io.Writer, label string, t *Trie) {
 	fmt.Fprintf(w, `digraph G {graph[label="%s(%vb)"]; node[style=filled];`, label, t.root.size())
@@ -53,7 +57,11 @@ func Graphviz(w io.Writer, label string, t *Trie) {
 
 func graphvizNode(w io.Writer, n *node, id *id) int64 {
 	i := id.node(n)
-	fmt.Fprintf(w, `"%v"[label="%v" fillcolor="#ffffff"];`, i, n.key)
+	if markup[n] {
+		fmt.Fprintf(w, `"%v"[label="%v" fillcolor="#ffffff" color="red"];`, i, n.key)
+	} else {
+		fmt.Fprintf(w, `"%v"[label="%v" fillcolor="#ffffff"];`, i, n.key)
+	}
 	for key, l := range n.values {
 		lid := graphvizLeaf(w, key, l, id)
 		child(w, i, lid)
