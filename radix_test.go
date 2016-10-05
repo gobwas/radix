@@ -1,6 +1,7 @@
 package radix
 
 import (
+	"math/rand"
 	"sort"
 	"testing"
 )
@@ -131,3 +132,52 @@ func listEq(a, b []int) bool {
 	}
 	return true
 }
+
+func randStr(n, size int) (ret []string) {
+	dup := make(map[string]bool)
+	var b []byte
+	for i := 0; i < n; i++ {
+		for {
+			b = b[:0]
+			for j := 0; j < size; j++ {
+				b = append(b, byte(rand.Intn('z'-'a'+1)+'a'))
+			}
+			if !dup[string(b)] {
+				ret = append(ret, string(b))
+				dup[string(b)] = true
+				break
+			}
+		}
+	}
+	return
+}
+
+func benchmarkInsert(b *testing.B, exists, n int) {
+	var v int
+	t := New()
+	values := randStr(exists+n, 16)
+	for i := 0; i < exists; i++ {
+		t.Insert(Pairs{{1, values[i]}}, v)
+		v++
+	}
+	insert := values[exists:]
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for j := 0; j < len(insert); j++ {
+			t.Insert(Pairs{{1, insert[j]}}, v)
+			v++
+		}
+		b.StopTimer()
+		for j := len(insert) - 1; j >= 0; j-- {
+			v--
+			if !t.Delete(Pairs{{1, insert[j]}}, v) {
+				b.Fatalf("could not delete previously inserted element")
+			}
+		}
+		b.StartTimer()
+	}
+}
+
+func BenchmarkTrieInsert_0_10(b *testing.B)     { benchmarkInsert(b, 0, 10) }
+func BenchmarkTrieInsert_0_1000(b *testing.B)   { benchmarkInsert(b, 0, 1000) }
+func BenchmarkTrieInsert_0_100000(b *testing.B) { benchmarkInsert(b, 0, 100000) }
