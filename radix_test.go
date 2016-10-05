@@ -14,7 +14,7 @@ type item struct {
 }
 
 type del struct {
-	record
+	item
 	ok bool
 }
 
@@ -30,7 +30,7 @@ func TestTrieInsert(t *testing.T) {
 	} {
 		trie := New()
 		for _, v := range test.values {
-			trie.Insert(test.insert, v)
+			trie.Insert(PathFromSlice(test.insert...), v)
 		}
 		trie.heap.Ascend(func(x *node) bool {
 			if x.key != 2 {
@@ -95,7 +95,7 @@ func TestTrieInsertLookup(t *testing.T) {
 
 func TestTrieInsertDelete(t *testing.T) {
 	for i, test := range []struct {
-		insert []record
+		insert []item
 		delete []del
 		expect []int
 	}{

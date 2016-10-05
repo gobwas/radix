@@ -18,15 +18,15 @@ func New() *Trie {
 	}
 }
 
-func (t *Trie) Insert(p Pairs, v int) {
-	if p == nil || p.Len() == 0 {
+func (t *Trie) Insert(p Path, v int) {
+	if p.Len() == 0 {
 		t.root.append(v)
 		return
 	}
 	// We want to find node with maximum miss factor.
 	var n *node
 	for _, c := range t.root.children {
-		if p.has(c.key) && (n == nil || t.heap.Less(n, c)) {
+		if p.Has(c.key) && (n == nil || t.heap.Less(n, c)) {
 			n = c
 		}
 	}
@@ -38,10 +38,10 @@ func (t *Trie) Insert(p Pairs, v int) {
 	t.root.addChild(n)
 }
 
-func (t *Trie) Delete(path Pairs, v int) (ok bool) {
+func (t *Trie) Delete(path Path, v int) (ok bool) {
 	leafLookup(&t.root, path, strictNodeLookup, func(l *leaf) bool {
 		// todo use storage interface
-		// todo maybe cleanup empty leafs without nodes
+		// todo maybe cleanup empty leafs Without nodes
 		if l.remove(v) {
 			ok = true
 		}
@@ -50,7 +50,7 @@ func (t *Trie) Delete(path Pairs, v int) (ok bool) {
 	return
 }
 
-func (t *Trie) Lookup(path Pairs, it Iterator) {
+func (t *Trie) Lookup(path Path, it Iterator) {
 	leafLookup(&t.root, path, greedyNodeLookup, func(l *leaf) bool {
 		if !l.iterate(it) {
 			return false
@@ -59,9 +59,9 @@ func (t *Trie) Lookup(path Pairs, it Iterator) {
 	})
 }
 
-type nodeLookupFn func(n *node, path Pairs, it leafIterator) bool
+type nodeLookupFn func(n *node, path Path, it leafIterator) bool
 
-func leafLookup(lf *leaf, path Pairs, nodeLookup nodeLookupFn, it leafIterator) bool {
+func leafLookup(lf *leaf, path Path, nodeLookup nodeLookupFn, it leafIterator) bool {
 	if !it(lf) {
 		return false
 	}
@@ -73,8 +73,8 @@ func leafLookup(lf *leaf, path Pairs, nodeLookup nodeLookupFn, it leafIterator) 
 	return true
 }
 
-func strictNodeLookup(n *node, path Pairs, it leafIterator) (ret bool) {
-	pw, _, ok := path.without(n.key)
+func strictNodeLookup(n *node, path Path, it leafIterator) (ret bool) {
+	pw, _, ok := path.Without(n.key)
 	if !ok {
 		return true
 	}
@@ -90,8 +90,8 @@ func strictNodeLookup(n *node, path Pairs, it leafIterator) (ret bool) {
 // It iterates over data of leafs, that strict equal to path.
 // If node has key k, and it is not present in path, then it will
 // dig in all leafs of node.
-func greedyNodeLookup(n *node, path Pairs, it leafIterator) (ret bool) {
-	pw, v, ok := path.without(n.key)
+func greedyNodeLookup(n *node, path Path, it leafIterator) (ret bool) {
+	pw, v, ok := path.Without(n.key)
 	if !ok {
 		for _, lf := range n.values {
 			if !leafLookup(lf, pw, greedyNodeLookup, it) {
@@ -106,9 +106,9 @@ func greedyNodeLookup(n *node, path Pairs, it leafIterator) (ret bool) {
 	return true
 }
 
-func search(lf *leaf, path Pairs) (ret []*node) {
+func search(lf *leaf, path Path) (ret []*node) {
 	for _, child := range lf.children {
-		p, v, ok := path.without(child.key)
+		p, v, ok := path.Without(child.key)
 		if p.Len() == 0 {
 			ret = append(ret, child)
 		}
@@ -119,7 +119,7 @@ func search(lf *leaf, path Pairs) (ret []*node) {
 	return
 }
 
-func searchNode(t *Trie, path Pairs) *node {
+func searchNode(t *Trie, path Path) *node {
 	if n := search(&t.root, path); len(n) > 0 {
 		return n[0]
 	}
@@ -275,10 +275,10 @@ func (n *node) remove(val string) *leaf {
 	return ret
 }
 
-func (n *node) insert(path Pairs, value int, cb nodeIndexer) {
+func (n *node) insert(path Path, value int, cb nodeIndexer) {
 insertion:
 	for {
-		pw, v, ok := path.without(n.key)
+		pw, v, ok := path.Without(n.key)
 		if ok {
 			path = pw
 		} else {
@@ -290,7 +290,7 @@ insertion:
 			return
 		}
 		for _, child := range l.children {
-			if path.has(child.key) {
+			if path.Has(child.key) {
 				n = child
 				continue insertion
 			}
@@ -369,58 +369,25 @@ func (l *leaf) iterate(it Iterator) bool {
 	return true
 }
 
-func makeTree(p Pairs, v int, cb nodeIndexer) *node {
+func makeTree(p Path, v int, cb nodeIndexer) *node {
 	n := p.Len()
 	cn := &node{
-		key: p[n-1].Key,
-		val: p[n-1].Value,
+		key: p.At(n - 1).Key,
+		val: p.At(n - 1).Value,
 	}
-	cl := cn.leaf(p[n-1].Value)
+	cl := cn.leaf(p.At(n - 1).Value)
 	cl.append(v)
 	cb(cn)
 	for i := n - 2; i >= 0; i-- {
 		n := &node{
-			key: p[i].Key,
-			val: p[i].Value,
+			key: p.At(i).Key,
+			val: p.At(i).Value,
 		}
-		l := n.leaf(p[i].Value)
+		l := n.leaf(p.At(i).Value)
 		l.addChild(cn)
 
 		cb(n)
 		cn, cl = n, l
 	}
 	return cn
-}
-
-type Pair struct {
-	Key   uint
-	Value string
-}
-
-type Pairs []Pair
-
-func (p Pairs) Len() int { return len(p) }
-
-func (pairs Pairs) has(k uint) bool {
-	for _, p := range pairs {
-		if p.Key == k {
-			return true
-		}
-	}
-	return false
-}
-
-func (pairs Pairs) without(k uint) (ret Pairs, val string, ok bool) {
-	for i, p := range pairs {
-		if ok = p.Key == k; ok {
-			n := len(pairs)
-			ret = make(Pairs, n-1)
-			copy(ret[:i], pairs[:i])
-			copy(ret[i:], pairs[i+1:])
-			val = p.Value
-			return
-		}
-	}
-	ret = pairs
-	return
 }

@@ -38,6 +38,11 @@ func PathFromMap(m map[uint]string) (ret Path) {
 
 func (p Path) Len() int { return p.size }
 
+func (p Path) Has(k uint) bool {
+	_, ok := p.has(k)
+	return ok
+}
+
 func (p Path) has(k uint) (i int, ok bool) {
 	i = bsearch(p.pairs[:p.size], k)
 	ok = i > -1 && p.exclude&1<<uint(i) == 0

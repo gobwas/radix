@@ -1,6 +1,6 @@
 package radix
 
-type item struct {
+type record struct {
 	node  *node
 	score int64
 }
@@ -9,19 +9,19 @@ type item struct {
 type Heap struct {
 	d     int
 	size  int
-	data  []item
+	data  []record
 	index map[*node]int
 }
 
 func NewHeap(d, n int) *Heap {
 	return &Heap{
 		d:     d,
-		data:  make([]item, 0, n),
+		data:  make([]record, 0, n),
 		index: make(map[*node]int),
 	}
 }
 
-func HeapFromSlice(data []item, d int) *Heap {
+func HeapFromSlice(data []record, d int) *Heap {
 	h := &Heap{
 		d:    d,
 		data: data,
@@ -50,7 +50,7 @@ func (h *Heap) Len() int {
 	return h.size
 }
 
-func (h *Heap) Update(i int, x item) {
+func (h *Heap) Update(i int, x record) {
 	prev := h.data[i]
 	h.data[i] = x
 	if x.score > prev.score {
@@ -63,9 +63,9 @@ func (h *Heap) Update(i int, x item) {
 func (h *Heap) Modify(x *node, delta int64) {
 	i, ok := h.index[x]
 	if !ok {
-		panic("could not update item out of heap")
+		panic("could not update record out of heap")
 	}
-	h.Update(i, item{x, h.data[i].score + delta})
+	h.Update(i, record{x, h.data[i].score + delta})
 }
 
 func (h *Heap) Less(a, b *node) bool {
@@ -75,7 +75,7 @@ func (h *Heap) Less(a, b *node) bool {
 		j, ok = h.index[b]
 	}
 	if !ok {
-		panic("comparing item that not in heap")
+		panic("comparing record that not in heap")
 	}
 	return i > j
 }
@@ -83,9 +83,9 @@ func (h *Heap) Less(a, b *node) bool {
 func (h *Heap) Insert(x *node) {
 	i := h.size
 	if h.size == len(h.data) {
-		h.data = append(h.data, item{x, 0})
+		h.data = append(h.data, record{x, 0})
 	} else {
-		h.data[i] = item{x, 0}
+		h.data[i] = record{x, 0}
 	}
 	h.index[x] = i
 	h.size++
