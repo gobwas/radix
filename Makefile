@@ -11,5 +11,8 @@ clean:
 test: 
 	go test -v
 
+bench:
+	go test -run=none -bench=. -benchmem
+
 .IGNORE: _test _viz
 .PHONY: viz
