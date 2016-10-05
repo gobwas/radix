@@ -1,3 +1,6 @@
+BENCH   ?= .
+GTFLAGS ?=
+
 viz: graphviz _viz clean
 _viz:
 	go build ./tools/viz/...
@@ -12,7 +15,7 @@ test:
 	go test -v
 
 bench:
-	go test -run=none -bench=. -benchmem
+	go test -run=none -bench=$(BENCH) -benchmem $(GTFLAGS)
 
 .IGNORE: _test _viz
 .PHONY: viz
