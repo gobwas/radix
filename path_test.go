@@ -7,7 +7,7 @@ import (
 
 func benchmarkPathFromMap(b *testing.B, size int) {
 	m := make(map[uint]string, size)
-	s := randStr(size, 16)
+	s := randStr(size)
 	for i := 0; i < size; i++ {
 		m[uint(i)] = s[i]
 	}
@@ -19,7 +19,7 @@ func benchmarkPathFromMap(b *testing.B, size int) {
 
 func benchmarkPathFromSlice(b *testing.B, size int) {
 	data := make([]Pair, size)
-	s := randStr(size, 16)
+	s := randStr(size)
 	for i, key := range rand.Perm(size) {
 		data[i] = Pair{uint(key), s[i]}
 	}

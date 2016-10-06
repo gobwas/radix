@@ -25,13 +25,16 @@ func (t *Trie) Insert(p Path, v int) {
 	}
 	// We want to find node with maximum miss factor.
 	var n *node
+	var lv string
 	for _, c := range t.root.children {
-		if p.Has(c.key) && (n == nil || t.heap.Less(n, c)) {
+		v, has := p.Get(c.key)
+		if has && (n == nil || t.heap.Less(n, c)) {
+			lv = v
 			n = c
 		}
 	}
 	if n != nil {
-		n.insert(p, v, t.indexNode)
+		n.leaf(lv).insert(p.Without(n.key), v, t.indexNode)
 		return
 	}
 	n = makeTree(p, v, t.indexNode)
@@ -74,12 +77,11 @@ func leafLookup(lf *leaf, path Path, nodeLookup nodeLookupFn, it leafIterator) b
 }
 
 func strictNodeLookup(n *node, path Path, it leafIterator) (ret bool) {
-	pw, _, ok := path.Without(n.key)
-	if !ok {
+	if !path.Has(n.key) {
 		return true
 	}
 	for _, lf := range n.values {
-		if !leafLookup(lf, pw, strictNodeLookup, it) {
+		if !leafLookup(lf, path.Without(n.key), strictNodeLookup, it) {
 			return false
 		}
 	}
@@ -91,16 +93,16 @@ func strictNodeLookup(n *node, path Path, it leafIterator) (ret bool) {
 // If node has key k, and it is not present in path, then it will
 // dig in all leafs of node.
 func greedyNodeLookup(n *node, path Path, it leafIterator) (ret bool) {
-	pw, v, ok := path.Without(n.key)
+	v, ok := path.Get(n.key)
 	if !ok {
 		for _, lf := range n.values {
-			if !leafLookup(lf, pw, greedyNodeLookup, it) {
+			if !leafLookup(lf, path, greedyNodeLookup, it) {
 				return false
 			}
 		}
 		return true
 	}
-	if n.has(v) && !leafLookup(n.leaf(v), pw, greedyNodeLookup, it) {
+	if n.has(v) && !leafLookup(n.leaf(v), path.Without(n.key), greedyNodeLookup, it) {
 		return false
 	}
 	return true
@@ -108,12 +110,15 @@ func greedyNodeLookup(n *node, path Path, it leafIterator) (ret bool) {
 
 func search(lf *leaf, path Path) (ret []*node) {
 	for _, child := range lf.children {
-		p, v, ok := path.Without(child.key)
-		if p.Len() == 0 {
+		v, ok := path.Get(child.key)
+		if !ok {
+			continue
+		}
+		if path.Len() == 1 {
 			ret = append(ret, child)
 		}
-		if ok && child.has(v) {
-			ret = append(ret, search(child.leaf(v), p)...)
+		if child.has(v) {
+			ret = append(ret, search(child.leaf(v), path.Without(child.key))...)
 		}
 	}
 	return
@@ -258,6 +263,9 @@ func (n *node) set(val string, l *leaf) {
 }
 
 func (n *node) leaf(val string) *leaf {
+	if val == "" {
+		panic("empty leaf value")
+	}
 	l, ok := n.values[val]
 	if !ok {
 		l = &leaf{parent: n}
@@ -275,23 +283,17 @@ func (n *node) remove(val string) *leaf {
 	return ret
 }
 
-func (n *node) insert(path Path, value int, cb nodeIndexer) {
+func (l *leaf) insert(path Path, value int, cb nodeIndexer) {
 insertion:
 	for {
-		pw, v, ok := path.Without(n.key)
-		if ok {
-			path = pw
-		} else {
-			v = any
-		}
-		l := n.leaf(v)
 		if path.Len() == 0 {
 			l.append(value)
 			return
 		}
 		for _, child := range l.children {
-			if path.Has(child.key) {
-				n = child
+			if v, ok := path.Get(child.key); ok {
+				l = child.leaf(v)
+				path = path.Without(child.key)
 				continue insertion
 			}
 		}
@@ -370,24 +372,28 @@ func (l *leaf) iterate(it Iterator) bool {
 }
 
 func makeTree(p Path, v int, cb nodeIndexer) *node {
-	n := p.Len()
-	cn := &node{
-		key: p.At(n - 1).Key,
-		val: p.At(n - 1).Value,
+	last, cur, ok := p.Last()
+	if !ok {
+		panic("could not make tree with empty path")
 	}
-	cl := cn.leaf(p.At(n - 1).Value)
+	cn := &node{
+		key: last.Key,
+		val: last.Value,
+	}
+	cl := cn.leaf(last.Value)
 	cl.append(v)
 	cb(cn)
-	for i := n - 2; i >= 0; i-- {
+
+	p.Descend(cur, func(p Pair) {
 		n := &node{
-			key: p.At(i).Key,
-			val: p.At(i).Value,
+			key: p.Key,
+			val: p.Value,
 		}
-		l := n.leaf(p.At(i).Value)
+		l := n.leaf(p.Value)
 		l.addChild(cn)
 
 		cb(n)
 		cn, cl = n, l
-	}
+	})
 	return cn
 }
