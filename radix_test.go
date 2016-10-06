@@ -1,7 +1,10 @@
 package radix
 
 import (
+	"fmt"
+	"math"
 	"math/rand"
+	"os"
 	"sort"
 	"testing"
 )
@@ -10,6 +13,11 @@ type pairs []Pair
 
 type item struct {
 	p pairs
+	v int
+}
+
+type item_p struct {
+	p Path
 	v int
 }
 
@@ -180,32 +188,65 @@ func randStr(n, size int) (ret []string) {
 	return
 }
 
-func benchmarkInsert(b *testing.B, exists, n int) {
-	var v int
+func benchmarkInsert(b *testing.B, exists int) {
 	t := New()
-	values := randStr(exists+n, 16)
+	values := randStr(exists+1, 16)
 	for i := 0; i < exists; i++ {
-		t.Insert(PathFromSlice(Pair{1, values[i]}), v)
-		v++
+		t.Insert(PathFromSlice(Pair{1, values[i]}), i)
 	}
-	insert := values[exists:]
+	insert := values[len(values)-1]
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		for j := 0; j < len(insert); j++ {
-			t.Insert(PathFromSlice(Pair{1, insert[j]}), v)
-			v++
+			t.Insert(PathFromSlice(Pair{1, insert}), exists)
 		}
-		b.StopTimer()
-		for j := len(insert) - 1; j >= 0; j-- {
-			v--
-			if !t.Delete(PathFromSlice(Pair{1, insert[j]}), v) {
-				b.Fatalf("could not delete previously inserted element")
-			}
-		}
-		b.StartTimer()
 	}
 }
 
-func BenchmarkTrieInsert_0_10(b *testing.B)     { benchmarkInsert(b, 0, 10) }
-func BenchmarkTrieInsert_0_1000(b *testing.B)   { benchmarkInsert(b, 0, 1000) }
-func BenchmarkTrieInsert_0_100000(b *testing.B) { benchmarkInsert(b, 0, 100000) }
+func BenchmarkTrieInsert_0(b *testing.B)      { benchmarkInsert(b, 0) }
+func BenchmarkTrieInsert_1000(b *testing.B)   { benchmarkInsert(b, 1000) }
+func BenchmarkTrieInsert_100000(b *testing.B) { benchmarkInsert(b, 100000) }
+
+func fill(t *Trie, path []Pair, d, n, v int, values []string, k, m int) (ret []item_p) {
+	if d == 0 {
+		return
+	}
+	for i := 0; i < n; i++ {
+		for j := 0; j < v; j++ {
+			np := append(path, Pair{uint(m + i), values[k]})
+			ps := PathFromSlice(np...)
+			val := 0
+			if d == 1 {
+				ret = append(ret, item_p{ps, val})
+			}
+			fmt.Println("INSERT:", np, m+i)
+			t.Insert(ps, val)
+			k++
+			ret = append(ret, fill(t, np, d-1, n, v, values, k, m+n)...)
+		}
+	}
+	return
+}
+
+func trieSize(d, n, v int) (int, int) {
+	nodes := float64(n)
+	var i float64
+	for i = 1; i < float64(d); i++ {
+		nodes += i * float64(v) * math.Pow(float64(n), i)
+	}
+	return int(nodes), int(nodes * float64(v))
+}
+
+func benchmarkLookup(b *testing.B, d, n, v int) {
+	_, leafs := trieSize(d, n, v)
+	values := randStr(leafs, 8)
+	t := New()
+	fill(t, nil, d, n, v, values, 0, 0)
+	b.ResetTimer()
+	// initial tree
+	Graphviz(os.Stdout, fmt.Sprintf("bench_%d_%d_%d", d, n, v), t)
+	os.Stdout.Write([]byte{'\n', '\n'})
+}
+
+func BenchmarkTrieLookup_1_1_2(b *testing.B) { benchmarkLookup(b, 1, 1, 2) }
+func BenchmarkTrieLookup_2_1_2(b *testing.B) { benchmarkLookup(b, 2, 1, 1) }

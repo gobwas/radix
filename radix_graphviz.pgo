@@ -15,7 +15,7 @@ type id struct {
 	l map[*leaf]int64
 }
 
-func SearchNode(t *Trie, path Pairs) *node {return searchNode(t, path)}
+func SearchNode(t *Trie, path Path) *node {return searchNode(t, path)}
 
 func SiftUp(n *node) *node {	return siftUp(n)	}
 
