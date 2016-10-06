@@ -11,11 +11,14 @@ graphviz:
 clean:
 	find . -name tmp_*.go | xargs rm
 
-test: 
+test: graphviz _test clean
+
+_test:
 	go test -v
 
-bench:
+bench: graphviz _bench clean
+_bench:
 	go test -run=none -bench=$(BENCH) -benchmem $(GTFLAGS)
 
-.IGNORE: _test _viz
+.IGNORE: _test _bench _viz
 .PHONY: viz
