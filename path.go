@@ -10,23 +10,26 @@ type Pair struct {
 type Path struct {
 	size     int
 	len      int
-	pairs    [32]Pair
+	pairs    []Pair
 	excluded uint32
 }
 
 func PathFromSlice(data ...Pair) (ret Path) {
-	copy(ret.pairs[:], data)
+	// TODO(s.kamardin) what if len(data)>32?
+	ret.pairs = make([]Pair, len(data))
+	copy(ret.pairs, data)
 	if len(data) > len(ret.pairs) {
 		ret.size = len(ret.pairs)
 	} else {
 		ret.size = len(data)
 	}
 	ret.len = ret.size
-	doSort(ret.pairs[:], 0, ret.size)
+	doSort(ret.pairs, 0, ret.size)
 	return
 }
 
 func PathFromMap(m map[uint]string) (ret Path) {
+	ret.pairs = make([]Pair, len(m))
 	var i int
 	for k, v := range m {
 		ret.pairs[i] = Pair{k, v}
@@ -37,18 +40,18 @@ func PathFromMap(m map[uint]string) (ret Path) {
 	}
 	ret.size = i
 	ret.len = i
-	doSort(ret.pairs[:], 0, i)
+	doSort(ret.pairs, 0, i)
 	return
 }
 
-func (p *Path) Len() int { return p.len }
+func (p Path) Len() int { return p.len }
 
-func (p *Path) Has(k uint) bool {
+func (p Path) Has(k uint) bool {
 	_, ok := p.has(k)
 	return ok
 }
 
-func (p *Path) Get(k uint) (string, bool) {
+func (p Path) Get(k uint) (string, bool) {
 	i, ok := p.has(k)
 	if !ok {
 		return "", false
@@ -56,7 +59,7 @@ func (p *Path) Get(k uint) (string, bool) {
 	return p.pairs[i].Value, true
 }
 
-func (p *Path) Last() (Pair, int, bool) {
+func (p Path) Last() (Pair, int, bool) {
 	for i := p.size - 1; i >= 0; i-- {
 		if p.includes(i) {
 			return p.pairs[i], i, true
@@ -65,7 +68,7 @@ func (p *Path) Last() (Pair, int, bool) {
 	return Pair{}, -1, false
 }
 
-func (p *Path) Descend(cur int, cb func(Pair)) {
+func (p Path) Descend(cur int, cb func(Pair)) {
 	for i := cur - 1; i >= 0; i-- {
 		if p.includes(i) {
 			cb(p.pairs[i])
@@ -81,7 +84,7 @@ func (p Path) Without(k uint) Path {
 	return p
 }
 
-func (p *Path) String() (ret string) {
+func (p Path) String() (ret string) {
 	for i := 0; i < p.size; i++ {
 		if p.includes(i) {
 			pair := p.pairs[i]
@@ -91,15 +94,15 @@ func (p *Path) String() (ret string) {
 	return
 }
 
-func (p *Path) includes(i int) bool {
+func (p Path) includes(i int) bool {
 	return p.excluded&(1<<uint(i)) == 0
 }
 
-func (p *Path) exclude(i int) {
+func (p Path) exclude(i int) {
 	p.excluded |= 1 << uint(i)
 }
 
-func (p *Path) has(k uint) (i int, ok bool) {
+func (p Path) has(k uint) (i int, ok bool) {
 	i = bsearch(p.pairs[:p.size], k)
 	ok = i > -1 && p.includes(i)
 	return
