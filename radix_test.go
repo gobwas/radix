@@ -44,7 +44,7 @@ func TestTrieInsert(t *testing.T) {
 			if x.key != 2 {
 				return true
 			}
-			if !listEq(x.leaf("b").data, test.values) {
+			if !listEq(x.leaf("b").dataToSlice(), test.values) {
 				t.Errorf("[%d] leaf values is %v; want %v", i, x.leaf("b").data, test.values)
 			}
 			return false
@@ -299,23 +299,39 @@ func benchmarkLookup(b *testing.B, d, n, v int) {
 }
 
 func benchmarkDelete(b *testing.B, d, n, v int) {
-	tries, deletes := genTries(b.N, d, n, v)
-	b.ResetTimer()
-
 	var trie *Trie
 	var del []item_p
-	x := -1
 	for i := 0; i < b.N; i++ {
 		if len(del) == 0 {
-			x++
-			trie = tries[x]
-			del = deletes[x]
+			b.StopTimer()
+			trie, del = genTrie(d, n, v)
+			b.StartTimer()
 		}
 		item := del[len(del)-1]
 		del = del[:len(del)-1]
-		trie.Delete(item.p, item.v)
+		if !trie.Delete(item.p, item.v) {
+			b.Fatalf("could not delete item")
+		}
 	}
 }
+
+//func BenchmarkMap(b *testing.B) {
+//	m := make(map[string]int, 1000)
+//	s := randStrn(1000, 16)
+//	for i := 0; i < 1000; i++ {
+//		m[s[i]] = i
+//	}
+//	b.ResetTimer()
+//	for i := 0; i < b.N; i++ {
+//		_ = m[s[i%1000]]
+//	}
+//}
+
+func BenchmarkTrieDelete_2_1_100(b *testing.B) { benchmarkDelete(b, 1, 1, 100) }
+
+//func BenchmarkTrieDelete_2_1_1000(b *testing.B)    { benchmarkDelete(b, 1, 1, 1000) }
+//func BenchmarkTrieDelete_1_1_10000(b *testing.B)   { benchmarkDelete(b, 1, 1, 10000) }
+//func BenchmarkTrieDelete_1_1_1000000(b *testing.B) { benchmarkDelete(b, 1, 1, 1000000) }
 
 func BenchmarkTrieLookup_2_1_100(b *testing.B)     { benchmarkLookup(b, 1, 1, 100) }
 func BenchmarkTrieLookup_2_1_1000(b *testing.B)    { benchmarkLookup(b, 1, 1, 1000) }

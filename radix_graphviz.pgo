@@ -7,6 +7,8 @@ import (
 	"io"
 	"sync/atomic"
 	"unsafe"
+
+	"github.com/google/btree"
 )
 
 type id struct {
@@ -76,7 +78,7 @@ func graphvizNode(w io.Writer, n *node, id *id) int64 {
 func graphvizLeaf(w io.Writer, value string, l *leaf, id *id) int64 {
 	i := id.leaf(l)
 	fmt.Fprintf(w, `"%v"[label="%v" fillcolor="#bef1cf"];`, i, value)
-	if len(l.data) > 0 {
+	if l.data.Len() > 0 {
 		d := graphvizData(w, l.data, id)
 		fmt.Fprintf(w, `"%v"->"%v"[style=dashed,dir=none];`, i, d)
 	}
@@ -102,9 +104,10 @@ func child(w io.Writer, a, b int64) {
 func (l *leaf) size() (s uintptr) {
 	s += unsafe.Sizeof(l)
 	s += unsafe.Sizeof(l.data)
-	for _, v := range l.data {
-		s += unsafe.Sizeof(v)
-	}
+	l.data.Ascend(func(i btree.Item) bool {
+		s += unsafe.Sizeof(int(i.(btree.Int)))
+		return true
+	})
 	s += unsafe.Sizeof(l.children)
 	for _, c := range l.children {
 		s += c.size()
@@ -126,14 +129,12 @@ func (n *node) size() (s uintptr) {
 	return
 }
 
-func graphvizData(w io.Writer, data []int, id *id) int64 {
+func graphvizData(w io.Writer, data *btree.BTree, id *id) int64 {
 	var str string
-	for i, v := range data {
-		if i > 0 {
-			str += ","
-		}
-		str += fmt.Sprintf("%v", v)
-	}
+	data.Ascend(func(i btree.Item) bool {
+		str+= fmt.Sprintf("%v;", int(i.(btree.Int)))
+		return true
+	})	
 	n := id.next()
 	fmt.Fprintf(w, `"%v"[label="%v" fillcolor="#cccccc" shape=polygon];`, n, str)
 	return n

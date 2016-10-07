@@ -1,6 +1,10 @@
 package radix
 
-import "fmt"
+import (
+	"fmt"
+	"github.com/google/btree"
+	//"github.com/gobwas/array"
+)
 
 const any = "*"
 
@@ -14,7 +18,7 @@ type Trie struct {
 
 func New() *Trie {
 	return &Trie{
-		root: &leaf{},
+		root: newLeaf(nil),
 		heap: NewHeap(2, 0),
 	}
 }
@@ -283,7 +287,7 @@ func (n *node) leaf(val string) *leaf {
 	}
 	l, ok := n.values[val]
 	if !ok {
-		l = &leaf{parent: n}
+		l = newLeaf(n)
 		n.set(val, l)
 	}
 	return l
@@ -296,6 +300,19 @@ func (n *node) remove(val string) *leaf {
 		ret.parent = nil
 	}
 	return ret
+}
+
+type leaf struct {
+	data     *btree.BTree
+	children map[uint]*node
+	parent   *node
+}
+
+func newLeaf(parent *node) *leaf {
+	return &leaf{
+		data:   btree.New(128),
+		parent: parent,
+	}
 }
 
 func (l *leaf) insert(path Path, value int, cb nodeIndexer) {
@@ -317,13 +334,6 @@ insertion:
 		return
 	}
 }
-
-type leaf struct {
-	data     []int
-	children map[uint]*node
-	parent   *node
-}
-
 func (l *leaf) has(key uint) bool {
 	_, ok := l.children[key]
 	return ok
@@ -354,36 +364,36 @@ func (l *leaf) getChild(key uint) (ret *node) {
 	return
 }
 
-func (l *leaf) empty() bool {
-	return len(l.children) == 0 && len(l.data) == 0
+func (l *leaf) dataToSlice() []int {
+	ret := make([]int, l.data.Len())
+	var i int
+	l.data.Ascend(func(x btree.Item) bool {
+		ret[i] = int(x.(btree.Int))
+		i++
+		return true
+	})
+	return ret
 }
 
-func (l *leaf) append(v ...int) {
-	l.data = append(l.data, v...)
+func (l *leaf) empty() bool {
+	return len(l.children) == 0 && l.data.Len() == 0
+}
+
+func (l *leaf) append(v int) {
+	l.data.ReplaceOrInsert(btree.Int(v))
 }
 
 // todo use store
 func (l *leaf) remove(v int) (ok bool) {
-	for i, e := range l.data {
-		if ok = e == v; ok {
-			n := len(l.data)
-			d := make([]int, n-1)
-			copy(d[:i], l.data[:i])
-			copy(d[i:], l.data[i+1:])
-			l.data = d
-			return
-		}
-	}
-	return
+	return l.data.Delete(btree.Int(v)) != nil
 }
 
-func (l *leaf) iterate(it Iterator) bool {
-	for _, v := range l.data {
-		if !it(v) {
-			return false
-		}
-	}
-	return true
+func (l *leaf) iterate(it Iterator) (ok bool) {
+	l.data.Ascend(func(i btree.Item) bool {
+		ok = it(int(i.(btree.Int)))
+		return ok
+	})
+	return
 }
 
 func makeTree(p Path, v int, cb nodeIndexer) *node {
