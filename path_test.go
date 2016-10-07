@@ -29,6 +29,26 @@ func benchmarkPathFromSlice(b *testing.B, size int) {
 	}
 }
 
+func benchmarkPathWithout(b *testing.B, size int) {
+	data := make([]Pair, size)
+	s := randStr(size)
+	rid := rand.Perm(size)
+	for i, key := range rid {
+		data[i] = Pair{uint(key), s[i]}
+	}
+	path := PathFromSlice(data...)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		_ = path.Without(uint(rid[i%size]))
+	}
+}
+
+func BenchmarkPathWithout_2(b *testing.B)  { benchmarkPathWithout(b, 2) }
+func BenchmarkPathWithout_4(b *testing.B)  { benchmarkPathWithout(b, 4) }
+func BenchmarkPathWithout_8(b *testing.B)  { benchmarkPathWithout(b, 8) }
+func BenchmarkPathWithout_16(b *testing.B) { benchmarkPathWithout(b, 16) }
+func BenchmarkPathWithout_32(b *testing.B) { benchmarkPathWithout(b, 32) }
+
 func BenchmarkPathFromMap_2(b *testing.B)  { benchmarkPathFromMap(b, 2) }
 func BenchmarkPathFromMap_4(b *testing.B)  { benchmarkPathFromMap(b, 4) }
 func BenchmarkPathFromMap_8(b *testing.B)  { benchmarkPathFromMap(b, 8) }
