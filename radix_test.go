@@ -1,6 +1,7 @@
 package radix
 
 import (
+	"bytes"
 	"fmt"
 	"math"
 	"math/rand"
@@ -95,7 +96,9 @@ func TestTrieInsertLookup(t *testing.T) {
 				return true
 			})
 			if !listEq(result, test.expect) {
-				t.Errorf("[%d] Lookup(%v) = %v; want %v", i, p, result, test.expect)
+				buf := &bytes.Buffer{}
+				Graphviz(buf, fmt.Sprintf("test-%d", i), trie)
+				t.Errorf("[%d] Lookup(%v) = %v; want %v\nTrie graphviz:\n%s\n", i, p, result, test.expect, buf.String())
 			}
 		}
 	}
@@ -142,14 +145,16 @@ func TestTrieInsertDelete(t *testing.T) {
 			}
 		}
 		var result []int
-		trie.Lookup(PathFromSlice(), func(v int) bool {
+		trie.ForEach(func(p Path, v int) bool {
 			result = append(result, v)
 			return true
 		})
 		if !listEq(result, test.expect) {
+			buf := &bytes.Buffer{}
+			Graphviz(buf, fmt.Sprintf("test-%d", i), trie)
 			t.Errorf(
-				"[%d] after Delete; Lookup(%v) = %v; want %v",
-				i, pairs{}, result, test.expect,
+				"[%d] after Delete; Lookup(%v) = %v; want %v\nTrie graphviz:\n%s\n",
+				i, pairs{}, result, test.expect, buf.String(),
 			)
 		}
 	}
@@ -310,7 +315,7 @@ func benchmarkDelete(b *testing.B, d, n, v int) {
 		item := del[len(del)-1]
 		del = del[:len(del)-1]
 		if !trie.Delete(item.p, item.v) {
-			b.Fatalf("could not delete item")
+			b.Fatalf("could not delete item: %v %v", item.p.String(), item.v)
 		}
 	}
 }

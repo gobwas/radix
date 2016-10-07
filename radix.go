@@ -3,7 +3,6 @@ package radix
 import (
 	"fmt"
 	"github.com/google/btree"
-	//"github.com/gobwas/array"
 )
 
 const any = "*"
@@ -48,8 +47,7 @@ func (t *Trie) Insert(p Path, v int) {
 
 func (t *Trie) Delete(path Path, v int) (ok bool) {
 	leafLookup(t.root, path, lookupStrict, func(l *leaf) bool {
-		// todo use storage interface
-		// todo cleanup empty leafs Without nodes
+		// TODO(s.kamardin) cleanup empty leafs Without nodes
 		if l.remove(v) {
 			ok = true
 		}
@@ -67,6 +65,25 @@ func (t *Trie) Lookup(path Path, it Iterator) {
 	})
 }
 
+func dig(path Path, lf *leaf, it func(Path, int) bool) bool {
+	ok := lf.iterate(func(v int) bool {
+		return it(path, v)
+	})
+	if !ok {
+		return false
+	}
+	for _, n := range lf.children {
+		for k, lf := range n.values {
+			if !dig(path.With(n.key, k), lf, it) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func (t *Trie) ForEach(it func(Path, int) bool) { dig(Path{}, t.root, it) }
+
 type lookupStrategy int
 
 const (
@@ -75,17 +92,20 @@ const (
 )
 
 func leafLookup(lf *leaf, path Path, s lookupStrategy, it leafIterator) bool {
-	if !it(lf) {
-		return false
-	}
 	switch s {
 	case lookupStrict:
+		if path.Len() == 0 {
+			return it(lf)
+		}
 		for _, child := range lf.children {
 			if !strictNodeLookup(child, path, it) {
 				return false
 			}
 		}
 	case lookupGreedy:
+		if !it(lf) {
+			return false
+		}
 		for _, child := range lf.children {
 			if !greedyNodeLookup(child, path, it) {
 				return false
@@ -96,15 +116,11 @@ func leafLookup(lf *leaf, path Path, s lookupStrategy, it leafIterator) bool {
 }
 
 func strictNodeLookup(n *node, path Path, it leafIterator) (ret bool) {
-	if !path.Has(n.key) {
+	v, ok := path.Get(n.key)
+	if !ok || !n.has(v) {
 		return true
 	}
-	for _, lf := range n.values {
-		if !leafLookup(lf, path.Without(n.key), lookupStrict, it) {
-			return false
-		}
-	}
-	return true
+	return leafLookup(n.leaf(v), path.Without(n.key), lookupStrict, it)
 }
 
 // nodeLookup searches values in greedy manner.
@@ -114,13 +130,16 @@ func strictNodeLookup(n *node, path Path, it leafIterator) (ret bool) {
 func greedyNodeLookup(n *node, path Path, it leafIterator) (ret bool) {
 	v, ok := path.Get(n.key)
 	if !ok {
-		for _, lf := range n.values {
-			if !leafLookup(lf, path, lookupGreedy, it) {
-				return false
-			}
-		}
 		return true
 	}
+	//if !ok {
+	//	for _, lf := range n.values {
+	//		if !leafLookup(lf, path, lookupGreedy, it) {
+	//			return false
+	//		}
+	//	}
+	//	return true
+	//}
 	if n.has(v) && !leafLookup(n.leaf(v), path.Without(n.key), lookupGreedy, it) {
 		return false
 	}
@@ -390,6 +409,7 @@ func (l *leaf) remove(v int) (ok bool) {
 }
 
 func (l *leaf) iterate(it Iterator) (ok bool) {
+	ok = true
 	l.data.Ascend(func(i btree.Item) bool {
 		ok = it(int(i.(btree.Int)))
 		return ok

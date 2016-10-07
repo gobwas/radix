@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"unsafe"
 
+	//"github.com/gobwas/array"
 	"github.com/google/btree"
 )
 
@@ -108,6 +109,10 @@ func (l *leaf) size() (s uintptr) {
 		s += unsafe.Sizeof(int(i.(btree.Int)))
 		return true
 	})
+	//l.data.Ascend(func(i array.Item) bool {
+	//	s += unsafe.Sizeof(int(i.(array.Int)))
+	//	return true
+	//})
 	s += unsafe.Sizeof(l.children)
 	for _, c := range l.children {
 		s += c.size()
@@ -130,11 +135,16 @@ func (n *node) size() (s uintptr) {
 }
 
 func graphvizData(w io.Writer, data *btree.BTree, id *id) int64 {
+//func graphvizData(w io.Writer, data array.Array, id *id) int64 {
 	var str string
 	data.Ascend(func(i btree.Item) bool {
 		str+= fmt.Sprintf("%v;", int(i.(btree.Int)))
 		return true
 	})	
+	//data.Ascend(func(i array.Item) bool {
+	//	str+= fmt.Sprintf("%v;", int(i.(array.Int)))
+	//	return true
+	//})	
 	n := id.next()
 	fmt.Fprintf(w, `"%v"[label="%v" fillcolor="#cccccc" shape=polygon];`, n, str)
 	return n
