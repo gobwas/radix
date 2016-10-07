@@ -97,8 +97,9 @@ func leafLookup(lf *leaf, path Path, s lookupStrategy, it leafIterator) bool {
 		if path.Len() == 0 {
 			return it(lf)
 		}
-		for _, child := range lf.children {
-			if !strictNodeLookup(child, path, it) {
+		for _, n := range lf.children {
+			v, ok := path.Get(n.key)
+			if ok && n.has(v) && !leafLookup(n.leaf(v), path.Without(n.key), lookupStrict, it) {
 				return false
 			}
 		}
@@ -106,42 +107,12 @@ func leafLookup(lf *leaf, path Path, s lookupStrategy, it leafIterator) bool {
 		if !it(lf) {
 			return false
 		}
-		for _, child := range lf.children {
-			if !greedyNodeLookup(child, path, it) {
+		for _, n := range lf.children {
+			v, ok := path.Get(n.key)
+			if ok && n.has(v) && !leafLookup(n.leaf(v), path.Without(n.key), lookupGreedy, it) {
 				return false
 			}
 		}
-	}
-	return true
-}
-
-func strictNodeLookup(n *node, path Path, it leafIterator) (ret bool) {
-	v, ok := path.Get(n.key)
-	if !ok || !n.has(v) {
-		return true
-	}
-	return leafLookup(n.leaf(v), path.Without(n.key), lookupStrict, it)
-}
-
-// nodeLookup searches values in greedy manner.
-// It iterates over data of leafs, that strict equal to path.
-// If node has key k, and it is not present in path, then it will
-// dig in all leafs of node.
-func greedyNodeLookup(n *node, path Path, it leafIterator) (ret bool) {
-	v, ok := path.Get(n.key)
-	if !ok {
-		return true
-	}
-	//if !ok {
-	//	for _, lf := range n.values {
-	//		if !leafLookup(lf, path, lookupGreedy, it) {
-	//			return false
-	//		}
-	//	}
-	//	return true
-	//}
-	if n.has(v) && !leafLookup(n.leaf(v), path.Without(n.key), lookupGreedy, it) {
-		return false
 	}
 	return true
 }
@@ -354,6 +325,7 @@ insertion:
 		return
 	}
 }
+
 func (l *leaf) has(key uint) bool {
 	_, ok := l.children[key]
 	return ok
