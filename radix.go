@@ -8,12 +8,13 @@ type Iterator func(int) bool
 type leafIterator func(*leaf) bool
 
 type Trie struct {
-	root leaf
+	root *leaf
 	heap *Heap
 }
 
 func New() *Trie {
 	return &Trie{
+		root: &leaf{},
 		heap: NewHeap(2, 0),
 	}
 }
@@ -42,9 +43,9 @@ func (t *Trie) Insert(p Path, v int) {
 }
 
 func (t *Trie) Delete(path Path, v int) (ok bool) {
-	leafLookup(&t.root, path, strictNodeLookup, func(l *leaf) bool {
+	leafLookup(t.root, path, lookupStrict, func(l *leaf) bool {
 		// todo use storage interface
-		// todo maybe cleanup empty leafs Without nodes
+		// todo cleanup empty leafs Without nodes
 		if l.remove(v) {
 			ok = true
 		}
@@ -54,7 +55,7 @@ func (t *Trie) Delete(path Path, v int) (ok bool) {
 }
 
 func (t *Trie) Lookup(path Path, it Iterator) {
-	leafLookup(&t.root, path, greedyNodeLookup, func(l *leaf) bool {
+	leafLookup(t.root, path, lookupGreedy, func(l *leaf) bool {
 		if !l.iterate(it) {
 			return false
 		}
@@ -62,15 +63,29 @@ func (t *Trie) Lookup(path Path, it Iterator) {
 	})
 }
 
-type nodeLookupFn func(n *node, path Path, it leafIterator) bool
+type lookupStrategy int
 
-func leafLookup(lf *leaf, path Path, nodeLookup nodeLookupFn, it leafIterator) bool {
+const (
+	lookupStrict lookupStrategy = iota
+	lookupGreedy
+)
+
+func leafLookup(lf *leaf, path Path, s lookupStrategy, it leafIterator) bool {
 	if !it(lf) {
 		return false
 	}
-	for _, child := range lf.children {
-		if !nodeLookup(child, path, it) {
-			return false
+	switch s {
+	case lookupStrict:
+		for _, child := range lf.children {
+			if !strictNodeLookup(child, path, it) {
+				return false
+			}
+		}
+	case lookupGreedy:
+		for _, child := range lf.children {
+			if !greedyNodeLookup(child, path, it) {
+				return false
+			}
 		}
 	}
 	return true
@@ -81,7 +96,7 @@ func strictNodeLookup(n *node, path Path, it leafIterator) (ret bool) {
 		return true
 	}
 	for _, lf := range n.values {
-		if !leafLookup(lf, path.Without(n.key), strictNodeLookup, it) {
+		if !leafLookup(lf, path.Without(n.key), lookupStrict, it) {
 			return false
 		}
 	}
@@ -96,13 +111,13 @@ func greedyNodeLookup(n *node, path Path, it leafIterator) (ret bool) {
 	v, ok := path.Get(n.key)
 	if !ok {
 		for _, lf := range n.values {
-			if !leafLookup(lf, path, greedyNodeLookup, it) {
+			if !leafLookup(lf, path, lookupGreedy, it) {
 				return false
 			}
 		}
 		return true
 	}
-	if n.has(v) && !leafLookup(n.leaf(v), path.Without(n.key), greedyNodeLookup, it) {
+	if n.has(v) && !leafLookup(n.leaf(v), path.Without(n.key), lookupGreedy, it) {
 		return false
 	}
 	return true
@@ -125,7 +140,7 @@ func search(lf *leaf, path Path) (ret []*node) {
 }
 
 func searchNode(t *Trie, path Path) *node {
-	if n := search(&t.root, path); len(n) > 0 {
+	if n := search(t.root, path); len(n) > 0 {
 		return n[0]
 	}
 	return nil

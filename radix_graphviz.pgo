@@ -51,7 +51,7 @@ func UnmarkNode(n *node) { delete(markup, n) }
 
 func Graphviz(w io.Writer, label string, t *Trie) {
 	fmt.Fprintf(w, `digraph G {graph[label="%s(%vb)"]; node[style=filled];`, label, t.root.size())
-	graphvizLeaf(w, "root", &t.root, newID())
+	graphvizLeaf(w, "root", t.root, newID())
 	fmt.Fprint(w, `}`)
 }
 
