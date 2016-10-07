@@ -236,9 +236,10 @@ func benchmarkInsert(b *testing.B, exists int) {
 	}
 }
 
-func BenchmarkTrieInsert_0(b *testing.B)      { benchmarkInsert(b, 0) }
-func BenchmarkTrieInsert_1000(b *testing.B)   { benchmarkInsert(b, 1000) }
-func BenchmarkTrieInsert_100000(b *testing.B) { benchmarkInsert(b, 100000) }
+func BenchmarkTrieInsert_0(b *testing.B)       { benchmarkInsert(b, 0) }
+func BenchmarkTrieInsert_1000(b *testing.B)    { benchmarkInsert(b, 1000) }
+func BenchmarkTrieInsert_100000(b *testing.B)  { benchmarkInsert(b, 100000) }
+func BenchmarkTrieInsert_1000000(b *testing.B) { benchmarkInsert(b, 1000000) }
 
 func fill(t *Trie, path []Pair, d, n, v int, values []string, ret *[]item_p, k *int, m int, val *int) {
 	if d == 0 {
@@ -332,13 +333,12 @@ func benchmarkDelete(b *testing.B, d, n, v int) {
 //	}
 //}
 
-func BenchmarkTrieDelete_2_1_100(b *testing.B) { benchmarkDelete(b, 1, 1, 100) }
+func BenchmarkTrieDelete_1_1_100(b *testing.B)     { benchmarkDelete(b, 1, 1, 100) }
+func BenchmarkTrieDelete_1_1_1000(b *testing.B)    { benchmarkDelete(b, 1, 1, 1000) }
+func BenchmarkTrieDelete_1_1_10000(b *testing.B)   { benchmarkDelete(b, 1, 1, 10000) }
+func BenchmarkTrieDelete_1_1_1000000(b *testing.B) { benchmarkDelete(b, 1, 1, 1000000) }
 
-//func BenchmarkTrieDelete_2_1_1000(b *testing.B)    { benchmarkDelete(b, 1, 1, 1000) }
-//func BenchmarkTrieDelete_1_1_10000(b *testing.B)   { benchmarkDelete(b, 1, 1, 10000) }
-//func BenchmarkTrieDelete_1_1_1000000(b *testing.B) { benchmarkDelete(b, 1, 1, 1000000) }
-
-func BenchmarkTrieLookup_2_1_100(b *testing.B)     { benchmarkLookup(b, 1, 1, 100) }
-func BenchmarkTrieLookup_2_1_1000(b *testing.B)    { benchmarkLookup(b, 1, 1, 1000) }
+func BenchmarkTrieLookup_1_1_100(b *testing.B)     { benchmarkLookup(b, 1, 1, 100) }
+func BenchmarkTrieLookup_1_1_1000(b *testing.B)    { benchmarkLookup(b, 1, 1, 1000) }
 func BenchmarkTrieLookup_1_1_10000(b *testing.B)   { benchmarkLookup(b, 1, 1, 10000) }
 func BenchmarkTrieLookup_1_1_1000000(b *testing.B) { benchmarkLookup(b, 1, 1, 1000000) }
