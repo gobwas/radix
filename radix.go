@@ -303,7 +303,8 @@ func (n *node) remove(val string) *leaf {
 }
 
 type leaf struct {
-	data     *btree.BTree
+	data *btree.BTree
+	// TODO(s.kamardin) use sorted array instead
 	children map[uint]*node
 	parent   *node
 }
