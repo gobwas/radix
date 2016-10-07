@@ -76,6 +76,22 @@ func (p Path) Descend(cur int, cb func(Pair)) {
 	}
 }
 
+func (p Path) With(k uint, v string) Path {
+	i, ok := bsearch(p.pairs[:p.size], k)
+	if ok {
+		p.include(i)
+		return p
+	}
+	with := make([]Pair, len(p.pairs)+1)
+	copy(with[:i], p.pairs[:i])
+	copy(with[i+1:], p.pairs[i:])
+	with[i] = Pair{k, v}
+	p.pairs = with
+	p.size++
+	p.len++
+	return p
+}
+
 func (p Path) Without(k uint) Path {
 	if i, ok := p.has(k); ok {
 		p.exclude(i)
@@ -98,13 +114,17 @@ func (p Path) includes(i int) bool {
 	return p.excluded&(1<<uint(i)) == 0
 }
 
+func (p Path) include(i int) {
+	p.excluded &^= 1 << uint(i)
+}
+
 func (p Path) exclude(i int) {
 	p.excluded |= 1 << uint(i)
 }
 
 func (p Path) has(k uint) (i int, ok bool) {
-	i = bsearch(p.pairs[:p.size], k)
-	ok = i > -1 && p.includes(i)
+	i, ok = bsearch(p.pairs[:p.size], k)
+	ok = ok && p.includes(i)
 	return
 }
 
@@ -146,19 +166,19 @@ func doSort(data []Pair, l, r int) {
 	}
 }
 
-func bsearch(data []Pair, key uint) int {
+func bsearch(data []Pair, key uint) (int, bool) {
 	l := 0
 	r := len(data)
 	for l < r {
 		m := l + (r-l)/2
 		switch {
 		case data[m].Key == key:
-			return m
+			return m, true
 		case data[m].Key < key:
 			l = m + 1
 		case data[m].Key > key:
 			r = m
 		}
 	}
-	return -1
+	return r, false
 }
