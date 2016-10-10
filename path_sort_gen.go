@@ -1,15 +1,20 @@
 package radix
 
 func pairPartition(data []Pair, l, r int) int {
-	x := data[l]
-	j := l
-	for i := l + 1; i < r; i++ {
-		if data[i].Key <= x.Key {
-			j++
-			data[j], data[i] = data[i], data[j]
+	// Inlined partition algorithm
+	var j int
+	{
+		// Let x be a pivot
+		x := data[l]
+		j = l
+		for i := l + 1; i < r; i++ {
+			if data[i].Key <= x.Key {
+				j++
+				data[j], data[i] = data[i], data[j]
+			}
 		}
+		data[j], data[l] = data[l], data[j]
 	}
-	data[j], data[l] = data[l], data[j]
 	return j
 }
 
@@ -17,7 +22,20 @@ func pairQuickSort(data []Pair, lo, hi int) {
 	if lo >= hi {
 		return
 	}
-	p := pairPartition(data, lo, hi)
+	// Inlined partition algorithm
+	var p int
+	{
+		// Let x be a pivot
+		x := data[lo]
+		p = lo
+		for i := lo + 1; i < hi; i++ {
+			if data[i].Key <= x.Key {
+				p++
+				data[p], data[i] = data[i], data[p]
+			}
+		}
+		data[p], data[lo] = data[lo], data[p]
+	}
 	pairQuickSort(data, lo, p)
 	pairQuickSort(data, p+1, hi)
 }

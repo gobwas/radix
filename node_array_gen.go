@@ -1,15 +1,20 @@
 package radix
 
 func nodePartition(data []*node, l, r int) int {
-	x := data[l]
-	j := l
-	for i := l + 1; i < r; i++ {
-		if data[i].key <= x.key {
-			j++
-			data[j], data[i] = data[i], data[j]
+	// Inlined partition algorithm
+	var j int
+	{
+		// Let x be a pivot
+		x := data[l]
+		j = l
+		for i := l + 1; i < r; i++ {
+			if data[i].key <= x.key {
+				j++
+				data[j], data[i] = data[i], data[j]
+			}
 		}
+		data[j], data[l] = data[l], data[j]
 	}
-	data[j], data[l] = data[l], data[j]
 	return j
 }
 
@@ -17,7 +22,20 @@ func nodeQuickSort(data []*node, lo, hi int) {
 	if lo >= hi {
 		return
 	}
-	p := nodePartition(data, lo, hi)
+	// Inlined partition algorithm
+	var p int
+	{
+		// Let x be a pivot
+		x := data[lo]
+		p = lo
+		for i := lo + 1; i < hi; i++ {
+			if data[i].key <= x.key {
+				p++
+				data[p], data[i] = data[i], data[p]
+			}
+		}
+		data[p], data[lo] = data[lo], data[p]
+	}
 	nodeQuickSort(data, lo, p)
 	nodeQuickSort(data, p+1, hi)
 }

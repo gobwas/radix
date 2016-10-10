@@ -3,22 +3,14 @@
 
 #define GEN_SORT(T, K);;\
 	func FUNC(Partition)(data SLICE(T), l, r int) int {;;\
-		x := data[l];;\
-		j := l;;\
-		for i := l + 1;; i < r;; i++ {;;\
-			if LESS_OR_EQUAL(data[i], x) {;;\
-				j++;;\
-				data[j], data[i] = data[i], data[j];;\
-			};;\
-		};;\
-		data[j], data[l] = data[l], data[j];;\
+		DO_PARTITION(data, l, r, j);;\
 		return j;;\
 	};;;;\
 	func FUNC(QuickSort)(data SLICE(T), lo, hi int) {;;\
 		if lo >= hi {;;\
 			return;;\
 		};;\
-		p := FUNC(Partition)(data, lo, hi);;\
+		DO_PARTITION(data, lo, hi, p);;\
 		FUNC(QuickSort)(data, lo, p);;\
 		FUNC(QuickSort)(data, p+1, hi);;\
 	};;;;\
@@ -36,6 +28,25 @@
 		DO_SEARCH(data, key, i, ok);;\
 		return i, ok;;\
 	};;;;\
+
+#define DO_SWAP(DATA, A, B)\
+	DATA[A], DATA[B] = DATA[B], DATA[A]\
+
+#define DO_PARTITION(DATA, L, R, PIVOT)\
+	;Inlined partition algorithm;;\
+	var PIVOT int;;\
+	{;;\
+		;Let x be a pivot;;\
+		x := DATA[L];;\
+		PIVOT = L;;\
+		for i := L + 1; i < R; i++ {;;\
+			if LESS_OR_EQUAL(DATA[i], x) {;;\
+				PIVOT++;;\
+				DO_SWAP(DATA, PIVOT, i);;\
+			};;\
+		};;\
+		DO_SWAP(DATA, PIVOT, L);;\
+	}\
 
 #define DO_INSERTION_SORT(DATA, L, R)\
 	;Inlined insertion sort;;\
