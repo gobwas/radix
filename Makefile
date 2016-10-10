@@ -8,7 +8,7 @@ enable_graphviz:
 	$(eval GRAPHVIZ:=1)
 
 bin/viz: enable_graphviz generate
-	go build ./tools/viz/...
+	go build -o bin/viz ./tools/viz/...
 
 clean:
 	find . -name *_gen.go | xargs rm
@@ -25,7 +25,10 @@ generate:
 		base=`basename $$name .go` \
 		output="$${base}_gen.go"; \
 		tmp="$${output}.tmp"; \
-	   	cc -Iinclude -DGRAPHVIZ=$(GRAPHVIZ) -E -P $$tmpl | sed -e $$'s/;;/\\\n/g' > $$tmp; \
+	   	cc -Iinclude -DGRAPHVIZ=$(GRAPHVIZ) -E -P $$tmpl \
+			| sed -E -e 's/ ;([a-zA-Z0-9])/\/\/ \1/g' \
+			| sed -e $$'s/;;/\\\n/g' \
+		   	> $$tmp; \
 		gofmt $$tmp > $$output; \
 		rm -f $$tmp; \
 	done;

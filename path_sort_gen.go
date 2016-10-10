@@ -23,13 +23,12 @@ func pairQuickSort(data []Pair, lo, hi int) {
 }
 
 func pairInsertionSort(data []Pair, l, r int) {
-
+	// Inlined insertion sort
 	for i := l + 1; i < r; i++ {
 		for j := i; j > l && data[j-1].Key > data[j].Key; j-- {
 			data[j], data[j-1] = data[j-1], data[j]
 		}
 	}
-
 }
 
 func pairSort(data []Pair, l, r int) {
@@ -37,17 +36,16 @@ func pairSort(data []Pair, l, r int) {
 		pairQuickSort(data, l, r)
 		return
 	}
-
+	// Inlined insertion sort
 	for i := l + 1; i < r; i++ {
 		for j := i; j > l && data[j-1].Key > data[j].Key; j-- {
 			data[j], data[j-1] = data[j-1], data[j]
 		}
 	}
-
 }
 
 func pairSearch(data []Pair, key uint) (int, bool) {
-
+	// Inlined binary search
 	var ok bool
 	i := len(data)
 	{
@@ -65,6 +63,5 @@ func pairSearch(data []Pair, key uint) (int, bool) {
 			}
 		}
 	}
-
 	return i, ok
 }

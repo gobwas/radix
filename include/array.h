@@ -56,7 +56,7 @@ func (a STRUCT(Array)) Ascend(cb func(x T) bool) bool {;;\
 	return true;;\
 };;\
 ;;\
-func (a STRUCT(Array)) AscendRange(x, y K, cb func(x T) bool) bool {;;\
+func (a STRUCT(Array)) AscendRange(x, y K, cb func(x T) bool) bool {\
 	DO_SEARCH_SHORT(a.data, x, i);;\
 	DO_SEARCH_SHORT(a.data, y, j);;\
 	for ; i < len(a.data) && i <= j; i++ {;;\

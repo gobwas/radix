@@ -23,13 +23,12 @@ func nodeQuickSort(data []*node, lo, hi int) {
 }
 
 func nodeInsertionSort(data []*node, l, r int) {
-
+	// Inlined insertion sort
 	for i := l + 1; i < r; i++ {
 		for j := i; j > l && data[j-1].key > data[j].key; j-- {
 			data[j], data[j-1] = data[j-1], data[j]
 		}
 	}
-
 }
 
 func nodeSort(data []*node, l, r int) {
@@ -37,17 +36,16 @@ func nodeSort(data []*node, l, r int) {
 		nodeQuickSort(data, l, r)
 		return
 	}
-
+	// Inlined insertion sort
 	for i := l + 1; i < r; i++ {
 		for j := i; j > l && data[j-1].key > data[j].key; j-- {
 			data[j], data[j-1] = data[j-1], data[j]
 		}
 	}
-
 }
 
 func nodeSearch(data []*node, key uint) (int, bool) {
-
+	// Inlined binary search
 	var ok bool
 	i := len(data)
 	{
@@ -65,7 +63,6 @@ func nodeSearch(data []*node, key uint) (int, bool) {
 			}
 		}
 	}
-
 	return i, ok
 }
 
@@ -74,7 +71,7 @@ type nodeArray struct {
 }
 
 func (a nodeArray) Has(x uint) bool {
-
+	// Inlined binary search
 	var ok bool
 	i := len(a.data)
 	{
@@ -92,12 +89,11 @@ func (a nodeArray) Has(x uint) bool {
 			}
 		}
 	}
-
 	return ok
 }
 
 func (a nodeArray) Get(x uint) *node {
-
+	// Inlined binary search
 	var ok bool
 	i := len(a.data)
 	{
@@ -115,7 +111,6 @@ func (a nodeArray) Get(x uint) *node {
 			}
 		}
 	}
-
 	if !ok {
 		return nil
 	}
@@ -124,7 +119,7 @@ func (a nodeArray) Get(x uint) *node {
 
 func (a nodeArray) Upsert(x *node) (cp nodeArray, prev *node) {
 	var with []*node
-
+	// Inlined binary search
 	var has bool
 	i := len(a.data)
 	{
@@ -142,7 +137,6 @@ func (a nodeArray) Upsert(x *node) (cp nodeArray, prev *node) {
 			}
 		}
 	}
-
 	if has {
 		with = make([]*node, len(a.data))
 		copy(with, a.data)
@@ -157,7 +151,7 @@ func (a nodeArray) Upsert(x *node) (cp nodeArray, prev *node) {
 }
 
 func (a nodeArray) Delete(x uint) (cp nodeArray, prev *node) {
-
+	// Inlined binary search
 	var has bool
 	i := len(a.data)
 	{
@@ -175,7 +169,6 @@ func (a nodeArray) Delete(x uint) (cp nodeArray, prev *node) {
 			}
 		}
 	}
-
 	if !has {
 		return a, nil
 	}
@@ -194,8 +187,7 @@ func (a nodeArray) Ascend(cb func(x *node) bool) bool {
 	return true
 }
 
-func (a nodeArray) AscendRange(x, y uint, cb func(x *node) bool) bool {
-
+func (a nodeArray) AscendRange(x, y uint, cb func(x *node) bool) bool { // Inlined binary search
 	var ok0 bool
 	i := len(a.data)
 	{
@@ -213,7 +205,7 @@ func (a nodeArray) AscendRange(x, y uint, cb func(x *node) bool) bool {
 			}
 		}
 	}
-
+	// Inlined binary search
 	var ok1 bool
 	j := len(a.data)
 	{
@@ -231,7 +223,6 @@ func (a nodeArray) AscendRange(x, y uint, cb func(x *node) bool) bool {
 			}
 		}
 	}
-
 	for ; i < len(a.data) && i <= j; i++ {
 		if !cb(a.data[i]) {
 			return false
