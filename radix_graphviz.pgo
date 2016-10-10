@@ -83,10 +83,11 @@ func graphvizLeaf(w io.Writer, value string, l *leaf, id *id) int64 {
 		d := graphvizData(w, l.data, id)
 		fmt.Fprintf(w, `"%v"->"%v"[style=dashed,dir=none];`, i, d)
 	}
-	for _, c := range l.children {
+	l.ascendChildren(func(c *node) bool {
 		cid := graphvizNode(w, c, id)
 		child(w, i, cid)
-	}
+		return true
+	})
 	if l.parent != nil {
 		cid := id.node(l.parent)
 		parent(w, i, cid)		
@@ -114,9 +115,10 @@ func (l *leaf) size() (s uintptr) {
 	//	return true
 	//})
 	s += unsafe.Sizeof(l.children)
-	for _, c := range l.children {
+	l.ascendChildren(func(c *node) bool {
 		s += c.size()
-	}
+		return true
+	})
 	s += unsafe.Sizeof(l.parent)
 	return
 }

@@ -2,6 +2,7 @@ package radix
 
 import (
 	"fmt"
+	"github.com/gobwas/array"
 	"github.com/google/btree"
 )
 
@@ -27,22 +28,7 @@ func (t *Trie) Insert(p Path, v int) {
 		t.root.append(v)
 		return
 	}
-	// We want to find node with maximum miss factor.
-	var n *node
-	var lv string
-	for _, c := range t.root.children {
-		v, has := p.Get(c.key)
-		if has && (n == nil || t.heap.Less(n, c)) {
-			lv = v
-			n = c
-		}
-	}
-	if n != nil {
-		n.leaf(lv).insert(p.Without(n.key), v, t.indexNode)
-		return
-	}
-	n = makeTree(p, v, t.indexNode)
-	t.root.addChild(n)
+	t.root.insert(p, v, t.indexNode)
 }
 
 func (t *Trie) Delete(path Path, v int) (ok bool) {
@@ -72,14 +58,16 @@ func dig(path Path, lf *leaf, it func(Path, int) bool) bool {
 	if !ok {
 		return false
 	}
-	for _, n := range lf.children {
+	lf.ascendChildren(func(n *node) bool {
 		for k, lf := range n.values {
 			if !dig(path.With(n.key, k), lf, it) {
+				ok = false
 				return false
 			}
 		}
-	}
-	return true
+		return true
+	})
+	return ok
 }
 
 func (t *Trie) ForEach(it func(Path, int) bool) { dig(Path{}, t.root, it) }
@@ -97,39 +85,32 @@ func leafLookup(lf *leaf, path Path, s lookupStrategy, it leafIterator) bool {
 		if path.Len() == 0 {
 			return it(lf)
 		}
-		for _, n := range lf.children {
-			v, ok := path.Get(n.key)
-			if ok && n.has(v) && !leafLookup(n.leaf(v), path.Without(n.key), lookupStrict, it) {
-				return false
-			}
-		}
 	case lookupGreedy:
 		if !it(lf) {
 			return false
 		}
-		for _, n := range lf.children {
-			v, ok := path.Get(n.key)
-			if ok && n.has(v) && !leafLookup(n.leaf(v), path.Without(n.key), lookupGreedy, it) {
-				return false
-			}
-		}
 	}
-	return true
+	return lf.ascendChildrenRange(path.Min(), path.Max(), func(n *node) bool {
+		v, ok := path.Get(n.key)
+		if ok && n.has(v) && !leafLookup(n.leaf(v), path.Without(n.key), s, it) {
+			return false
+		}
+		return true
+	})
 }
 
 func search(lf *leaf, path Path) (ret []*node) {
-	for _, child := range lf.children {
-		v, ok := path.Get(child.key)
-		if !ok {
-			continue
+	lf.ascendChildrenRange(path.Min(), path.Max(), func(n *node) bool {
+		if v, ok := path.Get(n.key); ok {
+			if path.Len() == 1 {
+				ret = append(ret, n)
+			}
+			if n.has(v) {
+				ret = append(ret, search(n.leaf(v), path.Without(n.key))...)
+			}
 		}
-		if path.Len() == 1 {
-			ret = append(ret, child)
-		}
-		if child.has(v) {
-			ret = append(ret, search(child.leaf(v), path.Without(child.key))...)
-		}
-	}
+		return true
+	})
 	return
 }
 
@@ -153,7 +134,7 @@ func major(n *node) (*node, int, int) {
 	var counter int
 	var candidate *node
 	for _, l := range n.values {
-		for _, child := range l.children {
+		l.ascendChildren(func(child *node) bool {
 			total++
 			switch {
 			case counter == 0:
@@ -164,18 +145,20 @@ func major(n *node) (*node, int, int) {
 			default:
 				counter--
 			}
-		}
+			return true
+		})
 	}
 	if candidate == nil {
 		return nil, -1, total
 	}
 	counter = 0
 	for _, l := range n.values {
-		for _, child := range l.children {
+		l.ascendChildren(func(child *node) bool {
 			if child.key == candidate.key && child.has(candidate.val) {
 				counter++
 			}
-		}
+			return true
+		})
 	}
 	return candidate, counter, total
 }
@@ -198,7 +181,7 @@ func siftUp(n *node) *node {
 		parent: root,
 	}
 	for val, l := range pNode.values {
-		for _, child := range l.children {
+		l.ascendChildren(func(child *node) bool {
 			switch {
 			//	case child.key != n.key:
 			//		lf := nn.leaf(any)
@@ -221,16 +204,18 @@ func siftUp(n *node) *node {
 					chlf := chn.leaf(val)
 					chlf.data = lf.data
 					chlf.children = lf.children
-					for _, c := range chlf.children {
+					chlf.ascendChildren(func(c *node) bool {
 						c.parent = chlf
-					}
+						return true
+					})
 					// cleanup
 					lf.data = nil
-					lf.children = nil
+					lf.children = array.Array{}
 					lf.parent = nil
 				}
 			}
-		}
+			return true
+		})
 	}
 	root.addChild(nn)
 	return nn
@@ -292,10 +277,13 @@ func (n *node) remove(val string) *leaf {
 	return ret
 }
 
+func (a *node) Less(b array.Item) bool {
+	return a.key < b.(*node).key
+}
+
 type leaf struct {
-	data *btree.BTree
-	// TODO(s.kamardin) use sorted array instead
-	children map[uint]*node
+	data     *btree.BTree
+	children array.Array
 	parent   *node
 }
 
@@ -307,50 +295,69 @@ func newLeaf(parent *node) *leaf {
 }
 
 func (l *leaf) insert(path Path, value int, cb nodeIndexer) {
-insertion:
 	for {
 		if path.Len() == 0 {
 			l.append(value)
 			return
 		}
-		for _, child := range l.children {
-			if v, ok := path.Get(child.key); ok {
-				l = child.leaf(v)
-				path = path.Without(child.key)
-				continue insertion
+		var has bool
+		// TODO(s.kamardin): use heap sort here to detect max miss factored node.
+		l.ascendChildrenRange(path.Min(), path.Max(), func(n *node) bool {
+			if v, ok := path.Get(n.key); ok {
+				l = n.leaf(v)
+				path = path.Without(n.key)
+				has = true
+				return false
 			}
+			return true
+		})
+		if !has {
+			l.addChild(makeTree(path, value, cb))
+			return
 		}
-		// Create whole chain of p with v at the end.
-		l.addChild(makeTree(path, value, cb))
-		return
 	}
 }
 
 func (l *leaf) has(key uint) bool {
-	_, ok := l.children[key]
-	return ok
+	return l.children.Has(&node{key: key})
 }
 
 func (l *leaf) addChild(n *node) {
-	if _, has := l.children[n.key]; has {
+	if l.children.Has(n) {
 		panic(fmt.Sprintf("leaf already has child with key %v", n.key))
 	}
-	if l.children == nil {
-		l.children = make(map[uint]*node)
-	}
-	l.children[n.key] = n
+	l.children, _ = l.children.Upsert(n)
 	n.parent = l
 }
 
 func (l *leaf) removeChild(key uint) {
-	delete(l.children, key)
+	l.children, _ = l.children.Delete(&node{key: key})
+}
+
+func (l *leaf) ascendChildren(cb func(*node) bool) (ok bool) {
+	ok = true
+	l.children.Ascend(func(x array.Item) bool {
+		ok = cb(x.(*node))
+		return ok
+	})
+	return
+}
+
+func (l *leaf) ascendChildrenRange(a, b uint, cb func(*node) bool) (ok bool) {
+	ok = true
+	l.children.AscendRange(&node{key: a}, &node{key: b}, func(x array.Item) bool {
+		ok = cb(x.(*node))
+		return ok
+	})
+	return
 }
 
 func (l *leaf) getChild(key uint) (ret *node) {
-	var ok bool
-	ret, ok = l.children[key]
-	if !ok {
-		ret = &node{key: key}
+	ret = &node{key: key}
+	v := l.children.Get(ret)
+	if v != nil {
+		ret = v.(*node)
+	} else {
 		l.addChild(ret)
 	}
 	return
@@ -368,7 +375,7 @@ func (l *leaf) dataToSlice() []int {
 }
 
 func (l *leaf) empty() bool {
-	return len(l.children) == 0 && l.data.Len() == 0
+	return l.children.Len() == 0 && l.data.Len() == 0
 }
 
 func (l *leaf) append(v int) {
@@ -402,7 +409,7 @@ func makeTree(p Path, v int, cb nodeIndexer) *node {
 	cl.append(v)
 	cb(cn)
 
-	p.Descend(cur, func(p Pair) {
+	p.Descend(cur, func(p Pair) bool {
 		n := &node{
 			key: p.Key,
 			val: p.Value,
@@ -412,6 +419,7 @@ func makeTree(p Path, v int, cb nodeIndexer) *node {
 
 		cb(n)
 		cn, cl = n, l
+		return true
 	})
 	return cn
 }
