@@ -21,7 +21,7 @@ func PathFromSlice(data ...Pair) (ret Path) {
 	ret.pairs = make([]Pair, len(data))
 	copy(ret.pairs, data)
 	ret.len = len(data)
-	doSort(ret.pairs, 0, len(ret.pairs))
+	pairSort(ret.pairs, 0, len(ret.pairs))
 	return
 }
 
@@ -36,7 +36,7 @@ func PathFromMap(m map[uint]string) (ret Path) {
 		}
 	}
 	ret.len = i
-	doSort(ret.pairs, 0, i)
+	pairSort(ret.pairs, 0, i)
 	return
 }
 
@@ -93,8 +93,8 @@ func (p Path) Descend(cur PathCursor, cb func(Pair) bool) {
 }
 
 func (p Path) AscendRange(a, b uint, cb func(Pair) bool) {
-	i, _ := bsearch(p.pairs, a)
-	j, _ := bsearch(p.pairs, b)
+	i, _ := pairSearch(p.pairs, a)
+	j, _ := pairSearch(p.pairs, b)
 	for ; i <= j; i++ {
 		if p.includes(i) && !cb(p.pairs[i]) {
 			return
@@ -113,7 +113,7 @@ func (p Path) Max() uint {
 }
 
 func (p Path) With(k uint, v string) Path {
-	i, ok := bsearch(p.pairs, k)
+	i, ok := pairSearch(p.pairs, k)
 	if ok {
 		p.include(i)
 		return p
@@ -158,63 +158,7 @@ func (p Path) exclude(i int) {
 }
 
 func (p Path) has(k uint) (i int, ok bool) {
-	i, ok = bsearch(p.pairs, k)
+	i, ok = pairSearch(p.pairs, k)
 	ok = ok && p.includes(i)
 	return
-}
-
-func partition(data []Pair, l, r int) int {
-	x := data[l] // pivot
-	j := l
-	for i := l + 1; i < r; i++ {
-		if data[i].Key <= x.Key {
-			j++
-			data[j], data[i] = data[i], data[j]
-		}
-	}
-	data[j], data[l] = data[l], data[j]
-	return j
-}
-
-func quickSort(data []Pair, lo, hi int) {
-	if lo >= hi {
-		return
-	}
-	p := partition(data, lo, hi)
-	quickSort(data, lo, p)
-	quickSort(data, p+1, hi)
-}
-
-func insertionSort(data []Pair, l, r int) {
-	for i := l + 1; i < r; i++ {
-		for j := i; j > l && data[j-1].Key > data[j].Key; j-- {
-			data[j], data[j-1] = data[j-1], data[j]
-		}
-	}
-}
-
-func doSort(data []Pair, l, r int) {
-	if r-l > 12 {
-		quickSort(data, l, r)
-	} else {
-		insertionSort(data, l, r)
-	}
-}
-
-// does not works well with duplicates
-func bsearch(data []Pair, key uint) (int, bool) {
-	l := 0
-	r := len(data)
-	for l < r {
-		m := l + (r-l)/2
-		switch {
-		case data[m].Key == key:
-			return m, true
-		case data[m].Key < key:
-			l = m + 1
-		case data[m].Key > key:
-			r = m
-		}
-	}
-	return r, false
 }
