@@ -18,7 +18,7 @@ var del = flag.String("del", "", "which key to delete in the trie")
 var siftN = flag.Int("sift_times", 1, "how much to sift up found node")
 var label = flag.String("label", "radix.Trie", "label to draw in graphviz diagram")
 
-func scanPath(r io.Reader) (path radix.Pairs, number string, err error) {
+func scanPath(r io.Reader) (path radix.Path, number string, err error) {
 	ws := bufio.NewScanner(r)
 	ws.Split(bufio.ScanWords)
 	var i int
@@ -31,7 +31,7 @@ func scanPath(r io.Reader) (path radix.Pairs, number string, err error) {
 			if err != nil {
 				return
 			}
-			path = append(path, radix.Pair{uint(key), txt})
+			path = path.With(uint(key), txt)
 		} else {
 			number = txt
 		}
@@ -39,7 +39,7 @@ func scanPath(r io.Reader) (path radix.Pairs, number string, err error) {
 	return
 }
 
-func scanPathVal(r io.Reader) (path radix.Pairs, val int, err error) {
+func scanPathVal(r io.Reader) (path radix.Path, val int, err error) {
 	var rem string
 	path, rem, err = scanPath(r)
 	if err != nil {
