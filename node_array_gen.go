@@ -14,7 +14,7 @@ type nodeArray struct {
 	readers int64
 }
 
-func (a nodeArray) Has(x uint) bool {
+func (a *nodeArray) Has(x uint) bool {
 	a.mu.RLock()
 	data := a.data
 	atomic.AddInt64(&a.readers, 1)
@@ -45,7 +45,7 @@ func (a nodeArray) Has(x uint) bool {
 	return ok
 }
 
-func (a nodeArray) Get(x uint) *Node {
+func (a *nodeArray) Get(x uint) *Node {
 	a.mu.RLock()
 	data := a.data
 	atomic.AddInt64(&a.readers, 1)
@@ -79,7 +79,57 @@ func (a nodeArray) Get(x uint) *Node {
 	return data[i]
 }
 
-func (a nodeArray) Upsert(x *Node) (prev *Node) {
+func (a *nodeArray) Getsert(x *Node) (ret *Node) {
+	a.mu.Lock()
+	// Binary search algorithm.
+	var has bool
+	var i int
+	{
+		l := 0
+		r := len(a.data)
+		for !has && l < r {
+			m := l + (r-l)/2
+			switch {
+			case a.data[m].key == x.key:
+				has = true
+				r = m
+			case a.data[m].key < x.key:
+				l = m + 1
+			case a.data[m].key > x.key:
+				r = m
+			}
+		}
+		i = r
+		_ = i // in case when i not being used
+	}
+	r := atomic.LoadInt64(&a.readers)
+	switch {
+	case has:
+		ret = a.data[i]
+	case r == 0: // no readers, insert inplace
+		if cap(a.data) == len(a.data) { // not enough storage in array
+			goto copyCase
+		}
+		a.data = a.data[:len(a.data)+1]
+		copy(a.data[i+1:], a.data[i:])
+		a.data[i] = x
+
+		ret = x
+	copyCase:
+		fallthrough
+	case r > 0: // readers exists, do copy
+		with := make([]*Node, len(a.data)+1)
+		copy(with[:i], a.data[:i])
+		copy(with[i+1:], a.data[i:])
+		with[i] = x
+		a.data = with
+
+		ret = x
+	}
+	a.mu.Unlock()
+	return
+}
+func (a *nodeArray) Upsert(x *Node) (prev *Node) {
 	a.mu.Lock()
 	// Binary search algorithm.
 	var has bool
@@ -111,13 +161,14 @@ func (a nodeArray) Upsert(x *Node) (prev *Node) {
 		fallthrough
 	case r == 0 && has: // no readers: update in place
 		a.data[i], prev = x, a.data[i]
-	case r == 0 && !has: // no readers, append inplace
+	case r == 0 && !has: // no readers, insert inplace
 		if cap(a.data) == len(a.data) { // not enough storage in array
 			goto copyCase
 		}
 		a.data = a.data[:len(a.data)+1]
 		copy(a.data[i+1:], a.data[i:])
 		a.data[i] = x
+
 	copyCase:
 		fallthrough
 	case r > 0 && !has: // readers exists, do copy
@@ -126,12 +177,13 @@ func (a nodeArray) Upsert(x *Node) (prev *Node) {
 		copy(with[i+1:], a.data[i:])
 		with[i] = x
 		a.data = with
+
 	}
 	a.mu.Unlock()
 	return
 }
 
-func (a nodeArray) Delete(x uint) (prev *Node) {
+func (a *nodeArray) Delete(x uint) (prev *Node) {
 	a.mu.Lock()
 	// Binary search algorithm.
 	var has bool
@@ -174,7 +226,7 @@ func (a nodeArray) Delete(x uint) (prev *Node) {
 	return
 }
 
-func (a nodeArray) Ascend(cb func(x *Node) bool) bool {
+func (a *nodeArray) Ascend(cb func(x *Node) bool) bool {
 	a.mu.RLock()
 	data := a.data
 	atomic.AddInt64(&a.readers, 1)
@@ -189,7 +241,7 @@ func (a nodeArray) Ascend(cb func(x *Node) bool) bool {
 	return true
 }
 
-func (a nodeArray) AscendRange(x, y uint, cb func(x *Node) bool) bool {
+func (a *nodeArray) AscendRange(x, y uint, cb func(x *Node) bool) bool {
 	a.mu.RLock()
 	data := a.data
 	atomic.AddInt64(&a.readers, 1)
@@ -197,20 +249,20 @@ func (a nodeArray) AscendRange(x, y uint, cb func(x *Node) bool) bool {
 	a.mu.RUnlock()
 
 	// Binary search algorithm.
-	var ok0 bool
+	var hasX bool
 	var i int
 	{
 		l := 0
-		r := len(data)
-		for !ok0 && l < r {
+		r := len(a.data)
+		for !hasX && l < r {
 			m := l + (r-l)/2
 			switch {
-			case data[m].key == x:
-				ok0 = true
+			case a.data[m].key == x:
+				hasX = true
 				r = m
-			case data[m].key < x:
+			case a.data[m].key < x:
 				l = m + 1
-			case data[m].key > x:
+			case a.data[m].key > x:
 				r = m
 			}
 		}
@@ -218,20 +270,20 @@ func (a nodeArray) AscendRange(x, y uint, cb func(x *Node) bool) bool {
 		_ = i // in case when i not being used
 	}
 	// Binary search algorithm.
-	var ok1 bool
+	var hasY bool
 	var j int
 	{
-		l := 0
-		r := len(data)
-		for !ok1 && l < r {
+		l := i
+		r := len(a.data)
+		for !hasY && l < r {
 			m := l + (r-l)/2
 			switch {
-			case data[m].key == y:
-				ok1 = true
+			case a.data[m].key == y:
+				hasY = true
 				r = m
-			case data[m].key < y:
+			case a.data[m].key < y:
 				l = m + 1
-			case data[m].key > y:
+			case a.data[m].key > y:
 				r = m
 			}
 		}
@@ -246,7 +298,7 @@ func (a nodeArray) AscendRange(x, y uint, cb func(x *Node) bool) bool {
 	return true
 }
 
-func (a nodeArray) Len() int {
+func (a *nodeArray) Len() int {
 	a.mu.RLock()
 	n := len(a.data)
 	a.mu.RUnlock()
