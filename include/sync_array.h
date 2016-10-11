@@ -16,13 +16,13 @@ type STRUCT(Array) struct {;;\
 	readers int64;;\
 };;\
 ;;\
-func (a STRUCT(Array)) Has(x K) bool {;;\
+func (a *STRUCT(Array)) Has(x K) bool {;;\
 	READ_DATA(data);;\
 	DO_SEARCH(data, x, i, ok);;\
 	return ok;;\
 };;\
 ;;\
-func (a STRUCT(Array)) Get(x K) T {;;\
+func (a *STRUCT(Array)) Get(x K) T {;;\
 	READ_DATA(data);;\
 	DO_SEARCH(data, x, i, ok);;\
 	if !ok {;;\
@@ -31,7 +31,29 @@ func (a STRUCT(Array)) Get(x K) T {;;\
 	return data[i];;\
 };;\
 ;;\
-func (a STRUCT(Array)) Upsert(x T) (prev T) {;;\
+func (a *STRUCT(Array)) Getsert(x T) (ret T) {;;\
+	a.mu.Lock();;\
+	DO_SEARCH(a.data, ID(x), i, has);;\
+	r := atomic.LoadInt64(&a.readers);;\
+	switch {;;\
+	case has:;;\
+		ret = a.data[i];;\
+	case r == 0: >>> no readers, insert inplace;;\
+		if cap(a.data) == len(a.data) { >>> not enough storage in array;;\
+			goto copyCase;;\
+		};;\
+		INSERT_INPLACE(a.data, i, x);;\
+		ret = x;;\
+	copyCase:;;\
+		fallthrough;;\
+	case r > 0: >>> readers exists, do copy;;\
+		INSERT_COPY(a.data, SLICE(T), i, x);;\
+		ret = x;;\
+	};;\
+	a.mu.Unlock();;\
+	return;;\
+};;\
+func (a *STRUCT(Array)) Upsert(x T) (prev T) {;;\
 	a.mu.Lock();;\
 	DO_SEARCH(a.data, ID(x), i, has);;\
 	r := atomic.LoadInt64(&a.readers);;\
@@ -43,27 +65,21 @@ func (a STRUCT(Array)) Upsert(x T) (prev T) {;;\
 		fallthrough;;\
 	case r == 0 && has: >>> no readers: update in place;;\
 		a.data[i], prev = x, a.data[i];;\
-	case r == 0 && !has: >>> no readers, append inplace;;\
+	case r == 0 && !has: >>> no readers, insert inplace;;\
 		if cap(a.data) == len(a.data) { >>> not enough storage in array;;\
 			goto copyCase;;\
 		};;\
-		a.data = a.data[:len(a.data)+1];;\
-		copy(a.data[i+1:], a.data[i:]);;\
-		a.data[i] = x;;\
+		INSERT_INPLACE(a.data, i, x);;\
 	copyCase:;;\
 		fallthrough;;\
 	case r > 0 && !has: >>> readers exists, do copy;;\
-		with := make(SLICE(T), len(a.data)+1);;\
-		copy(with[:i], a.data[:i]);;\
-		copy(with[i+1:], a.data[i:]);;\
-		with[i] = x;;\
-		a.data = with;;\
+		INSERT_COPY(a.data, SLICE(T), i, x);;\
 	};;\
 	a.mu.Unlock();;\
 	return;;\
 };;\
 ;;\
-func (a STRUCT(Array)) Delete(x K) (prev T) {;;\
+func (a *STRUCT(Array)) Delete(x K) (prev T) {;;\
 	a.mu.Lock();;\
 	DO_SEARCH(a.data, x, i, has);;\
 	if !has {;;\
@@ -86,7 +102,7 @@ func (a STRUCT(Array)) Delete(x K) (prev T) {;;\
 	return;;\
 };;\
 ;;\
-func (a STRUCT(Array)) Ascend(cb func(x T) bool) bool {;;\
+func (a *STRUCT(Array)) Ascend(cb func(x T) bool) bool {;;\
 	READ_DATA(data);;\
 	for _, x := range data {;;\
 		if !cb(x) {;;\
@@ -96,10 +112,10 @@ func (a STRUCT(Array)) Ascend(cb func(x T) bool) bool {;;\
 	return true;;\
 };;\
 ;;\
-func (a STRUCT(Array)) AscendRange(x, y K, cb func(x T) bool) bool {;;\
+func (a *STRUCT(Array)) AscendRange(x, y K, cb func(x T) bool) bool {;;\
 	READ_DATA(data);;\
-	DO_SEARCH_SHORT(data, x, i);;\
-	DO_SEARCH_SHORT(data, y, j);;\
+	DO_SEARCH_RANGE(a.data, x, 0, len(a.data), i, hasX);;\
+	DO_SEARCH_RANGE(a.data, y, i, len(a.data), j, hasY);;\
 	for ; i < len(data) && i <= j; i++ {;;\
 		if !cb(data[i]) {;;\
 			return false;;\
@@ -108,12 +124,24 @@ func (a STRUCT(Array)) AscendRange(x, y K, cb func(x T) bool) bool {;;\
 	return true;;\
 };;\
 ;;\
-func (a STRUCT(Array)) Len() int {;;\
+func (a *STRUCT(Array)) Len() int {;;\
 	a.mu.RLock();;\
 	n := len(a.data);;\
 	a.mu.RUnlock();;\
 	return n;;\
 };;\
+
+#define INSERT_INPLACE(DATA, I, X)\
+	DATA = DATA[:len(DATA)+1];;\
+	copy(DATA[I+1:], DATA[I:]);;\
+	DATA[I] = X;;\
+
+#define INSERT_COPY(DATA, CONTAINER, I, X)\
+	with := make(CONTAINER, len(DATA)+1);;\
+	copy(with[:I], DATA[:I]);;\
+	copy(with[I+1:], DATA[I:]);;\
+	with[I] = X;;\
+	DATA = with;;\
 
 #define READ_DATA(DATA)\
 	a.mu.RLock();;\
