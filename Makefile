@@ -10,7 +10,8 @@ enable_graphviz:
 disable_graphviz: 
 	$(eval GRAPHVIZ:=0)
 
-bin/viz: enable_graphviz generate
+bin/viz: enable_graphviz generate0 _viz disable_graphviz generate1
+_viz:
 	go build -o bin/viz ./tools/viz/...
 
 clean:
