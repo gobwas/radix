@@ -134,19 +134,19 @@ func (a *STRUCT(Array)) Len() int {;;\
 #define INSERT_INPLACE(DATA, I, X)\
 	DATA = DATA[:len(DATA)+1];;\
 	copy(DATA[I+1:], DATA[I:]);;\
-	DATA[I] = X;;\
+	DATA[I] = X\
 
 #define INSERT_COPY(DATA, CONTAINER, I, X)\
 	with := make(CONTAINER, len(DATA)+1);;\
 	copy(with[:I], DATA[:I]);;\
 	copy(with[I+1:], DATA[I:]);;\
 	with[I] = X;;\
-	DATA = with;;\
+	DATA = with\
 
 #define READ_DATA(DATA)\
 	a.mu.RLock();;\
 	DATA := a.data;;\
 	atomic.AddInt64(&a.readers, 1);;\
 	defer atomic.AddInt64(&a.readers, -1);;\
-	a.mu.RUnlock();;\
+	a.mu.RUnlock()\
 

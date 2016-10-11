@@ -20,7 +20,6 @@ func (a *nodeArray) Has(x uint) bool {
 	atomic.AddInt64(&a.readers, 1)
 	defer atomic.AddInt64(&a.readers, -1)
 	a.mu.RUnlock()
-
 	// Binary search algorithm.
 	var ok bool
 	var i int
@@ -51,7 +50,6 @@ func (a *nodeArray) Get(x uint) *Node {
 	atomic.AddInt64(&a.readers, 1)
 	defer atomic.AddInt64(&a.readers, -1)
 	a.mu.RUnlock()
-
 	// Binary search algorithm.
 	var ok bool
 	var i int
@@ -113,7 +111,6 @@ func (a *nodeArray) Getsert(x *Node) (ret *Node) {
 		a.data = a.data[:len(a.data)+1]
 		copy(a.data[i+1:], a.data[i:])
 		a.data[i] = x
-
 		ret = x
 	copyCase:
 		fallthrough
@@ -123,7 +120,6 @@ func (a *nodeArray) Getsert(x *Node) (ret *Node) {
 		copy(with[i+1:], a.data[i:])
 		with[i] = x
 		a.data = with
-
 		ret = x
 	}
 	a.mu.Unlock()
@@ -168,7 +164,6 @@ func (a *nodeArray) Upsert(x *Node) (prev *Node) {
 		a.data = a.data[:len(a.data)+1]
 		copy(a.data[i+1:], a.data[i:])
 		a.data[i] = x
-
 	copyCase:
 		fallthrough
 	case r > 0 && !has: // readers exists, do copy
@@ -177,7 +172,6 @@ func (a *nodeArray) Upsert(x *Node) (prev *Node) {
 		copy(with[i+1:], a.data[i:])
 		with[i] = x
 		a.data = with
-
 	}
 	a.mu.Unlock()
 	return
@@ -232,7 +226,6 @@ func (a *nodeArray) Ascend(cb func(x *Node) bool) bool {
 	atomic.AddInt64(&a.readers, 1)
 	defer atomic.AddInt64(&a.readers, -1)
 	a.mu.RUnlock()
-
 	for _, x := range data {
 		if !cb(x) {
 			return false
@@ -247,7 +240,6 @@ func (a *nodeArray) AscendRange(x, y uint, cb func(x *Node) bool) bool {
 	atomic.AddInt64(&a.readers, 1)
 	defer atomic.AddInt64(&a.readers, -1)
 	a.mu.RUnlock()
-
 	// Binary search algorithm.
 	var hasX bool
 	var i int
