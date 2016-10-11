@@ -27,7 +27,7 @@ func (a STRUCT(Array)) Upsert(x T) (cp STRUCT(Array), prev T) {;;\
 	if has {;;\
 		with = make(SLICE(T), len(a.data));;\
 		copy(with, a.data);;\
-		a.data[i], prev = x, a.data[i];;\
+		with[i], prev = x, a.data[i];;\
 	} else {;;\
 		with = make(SLICE(T), len(a.data)+1);;\
 		copy(with[:i], a.data[:i]);;\
