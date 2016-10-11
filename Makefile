@@ -4,8 +4,11 @@ GRAPHVIZ ?= 0
 
 TEMPLATES = $(wildcard $(PWD)/*.go.h)
 
-enable_graphviz: 
+enable_graphviz:
 	$(eval GRAPHVIZ:=1)
+
+disable_graphviz: 
+	$(eval GRAPHVIZ:=0)
 
 bin/viz: enable_graphviz generate
 	go build -o bin/viz ./tools/viz/...
@@ -13,13 +16,16 @@ bin/viz: enable_graphviz generate
 clean:
 	find . -name *_gen.go | xargs rm
 
-test: enable_graphviz generate
+test: enable_graphviz generate0 _test disable_graphviz generate1
+_test:
 	go test -v
 
-bench: enable_graphviz generate
+bench: enable_graphviz generate0 _bench disable_graphviz generate1
+_bench: 
 	go test -run=none -bench=$(BENCH) -benchmem $(GTFLAGS)
 
-generate:
+generate: generate0
+generate%:
 	for tmpl in $(TEMPLATES); do \
 		name=`basename $$tmpl .h`; \
 		base=`basename $$name .go` \
@@ -33,6 +39,6 @@ generate:
 		rm -f $$tmp; \
 	done;
 
-.IGNORE: _test _bench _viz
-.PHONY: viz
+.IGNORE: _test _bench _viz 
+.PHONY: generate enable_graphviz disable_graphviz
 
