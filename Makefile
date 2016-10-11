@@ -3,6 +3,7 @@ GTFLAGS  ?=
 GRAPHVIZ ?= 0
 
 TEMPLATES = $(wildcard $(PWD)/*.go.h)
+GENERATED = $(wildcard $(PWD)/*_gen.go)
 
 enable_graphviz:
 	$(eval GRAPHVIZ:=1)
@@ -15,7 +16,7 @@ _viz:
 	go build -o bin/viz ./tools/viz/...
 
 clean:
-	find . -name *_gen.go | xargs rm
+	for file in $(GENERATED); do [ -f $$file ] && rm $$file; done
 
 test: enable_graphviz generate0 _test disable_graphviz generate1
 _test:
