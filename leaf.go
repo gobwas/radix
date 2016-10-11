@@ -15,7 +15,6 @@ type Leaf struct {
 	dmu  sync.RWMutex
 	data *btree.BTree
 
-	cmu      sync.RWMutex
 	children nodeArray
 }
 
@@ -31,59 +30,35 @@ func (l *Leaf) Parent() *Node {
 }
 
 func (l *Leaf) HasChild(key uint) bool {
-	l.cmu.RLock()
-	children := l.children
-	l.cmu.RUnlock()
-	return children.Has(key)
+	return l.children.Has(key)
 }
 
 func (l *Leaf) AddChild(n *Node) {
-	var prev *Node
-	l.cmu.Lock()
-	l.children, prev = l.children.Upsert(n)
-	l.cmu.Unlock()
+	prev := l.children.Upsert(n)
 	n.parent = l
 	if prev != nil {
 		panic(fmt.Sprintf("leaf already has child with key %v", n.key))
 	}
 }
 
-func (l *Leaf) GetChild(key uint) (ret *Node) {
-	l.cmu.RLock()
-	children := l.children
-	l.cmu.RUnlock()
-	return children.Get(key)
+func (l *Leaf) GetChild(key uint) *Node {
+	return l.children.Get(key)
 }
 
-func (l *Leaf) GetsertChild(key uint) (ret *Node) {
-	l.cmu.Lock()
-	ret = l.children.Get(key)
-	if ret == nil {
-		ret = &Node{key: key}
-		l.children.Upsert(ret)
-	}
-	l.cmu.Unlock()
-	return
+func (l *Leaf) GetsertChild(key uint) *Node {
+	return l.children.Getsert(&Node{key: key})
 }
 
-func (l *Leaf) RemoveChild(key uint) {
-	l.cmu.Lock()
-	l.children, _ = l.children.Delete(key)
-	l.cmu.Unlock()
+func (l *Leaf) RemoveChild(key uint) *Node {
+	return l.children.Delete(key)
 }
 
 func (l *Leaf) AscendChildren(cb func(*Node) bool) (ok bool) {
-	l.cmu.RLock()
-	children := l.children
-	l.cmu.RUnlock()
-	return children.Ascend(cb)
+	return l.children.Ascend(cb)
 }
 
 func (l *Leaf) AscendChildrenRange(a, b uint, cb func(*Node) bool) (ok bool) {
-	l.cmu.RLock()
-	children := l.children
-	l.cmu.RUnlock()
-	return children.AscendRange(a, b, cb)
+	return l.children.AscendRange(a, b, cb)
 }
 
 func (l *Leaf) Data() []int {
@@ -101,17 +76,12 @@ func (l *Leaf) Data() []int {
 }
 
 func (l *Leaf) Empty() bool {
-	l.cmu.RLock()
-	cl := l.children.Len()
-	l.cmu.RUnlock()
-	if cl > 0 {
+	if l.children.Len() > 0 {
 		return false
 	}
-
 	l.dmu.RLock()
 	dl := l.data.Len()
 	l.dmu.RUnlock()
-
 	return dl == 0
 }
 
