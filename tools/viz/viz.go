@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/gobwas/radix"
+	"github.com/gobwas/radix/graphviz"
 )
 
 var sift = flag.String("sift", "", "which key to sift up in the trie")
@@ -74,7 +75,7 @@ func main() {
 	}
 
 	// initial tree
-	radix.Graphviz(os.Stdout, *label, t)
+	graphviz.Render(t, *label, os.Stdout)
 
 	if *sift != "" {
 		path, _, err := scanPath(strings.NewReader(*sift))
@@ -83,14 +84,14 @@ func main() {
 		}
 		n := radix.SearchNode(t, path)
 		if n != nil {
-			radix.MarkNode(n)
+			graphviz.MarkNode(n)
 			fmt.Fprint(os.Stdout, "\n\n")
-			radix.Graphviz(os.Stdout, *label, t)
-			radix.UnmarkNode(n)
+			graphviz.Render(t, *label, os.Stdout)
+			graphviz.UnmarkNode(n)
 			for i := 0; i < *siftN; i++ {
 				n = radix.SiftUp(n)
 				fmt.Fprint(os.Stdout, "\n\n")
-				radix.Graphviz(os.Stdout, *label, t)
+				graphviz.Render(t, *label, os.Stdout)
 			}
 		}
 	}
@@ -102,8 +103,7 @@ func main() {
 		}
 		if t.Delete(path, val) {
 			fmt.Fprint(os.Stdout, "\n")
-			radix.Graphviz(os.Stdout, *label, t)
+			graphviz.Render(t, *label, os.Stdout)
 		}
 	}
-
 }

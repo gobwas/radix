@@ -1,8 +1,10 @@
-package radix
+package radix_test
 
 import (
 	"math/rand"
 	"testing"
+
+	. "github.com/gobwas/radix"
 )
 
 func benchmarkPathFromMap(b *testing.B, size int) {

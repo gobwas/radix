@@ -4,7 +4,7 @@ package radix
 // DO NOT EDIT.
 
 type nodeArray struct {
-	data []*node
+	data []*Node
 }
 
 func (a nodeArray) Has(x uint) bool {
@@ -32,7 +32,7 @@ func (a nodeArray) Has(x uint) bool {
 	return ok
 }
 
-func (a nodeArray) Get(x uint) *node {
+func (a nodeArray) Get(x uint) *Node {
 	// Inlined binary search
 	var ok bool
 	var i int
@@ -60,8 +60,8 @@ func (a nodeArray) Get(x uint) *node {
 	return a.data[i]
 }
 
-func (a nodeArray) Upsert(x *node) (cp nodeArray, prev *node) {
-	var with []*node
+func (a nodeArray) Upsert(x *Node) (cp nodeArray, prev *Node) {
+	var with []*Node
 	// Inlined binary search
 	var has bool
 	var i int
@@ -84,11 +84,11 @@ func (a nodeArray) Upsert(x *node) (cp nodeArray, prev *node) {
 		_ = i // in case when i not being used
 	}
 	if has {
-		with = make([]*node, len(a.data))
+		with = make([]*Node, len(a.data))
 		copy(with, a.data)
 		a.data[i], prev = x, a.data[i]
 	} else {
-		with = make([]*node, len(a.data)+1)
+		with = make([]*Node, len(a.data)+1)
 		copy(with[:i], a.data[:i])
 		copy(with[i+1:], a.data[i:])
 		with[i] = x
@@ -96,7 +96,7 @@ func (a nodeArray) Upsert(x *node) (cp nodeArray, prev *node) {
 	return nodeArray{with}, prev
 }
 
-func (a nodeArray) Delete(x uint) (cp nodeArray, prev *node) {
+func (a nodeArray) Delete(x uint) (cp nodeArray, prev *Node) {
 	// Inlined binary search
 	var has bool
 	var i int
@@ -121,13 +121,13 @@ func (a nodeArray) Delete(x uint) (cp nodeArray, prev *node) {
 	if !has {
 		return a, nil
 	}
-	without := make([]*node, len(a.data)-1)
+	without := make([]*Node, len(a.data)-1)
 	copy(without[:i], a.data[:i])
 	copy(without[i:], a.data[i+1:])
 	return nodeArray{without}, a.data[i]
 }
 
-func (a nodeArray) Ascend(cb func(x *node) bool) bool {
+func (a nodeArray) Ascend(cb func(x *Node) bool) bool {
 	for _, x := range a.data {
 		if !cb(x) {
 			return false
@@ -136,7 +136,7 @@ func (a nodeArray) Ascend(cb func(x *node) bool) bool {
 	return true
 }
 
-func (a nodeArray) AscendRange(x, y uint, cb func(x *node) bool) bool {
+func (a nodeArray) AscendRange(x, y uint, cb func(x *Node) bool) bool {
 	// Inlined binary search
 	var ok0 bool
 	var i int

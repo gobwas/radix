@@ -1,52 +1,101 @@
 package radix
 
-import "fmt"
+import (
+	"fmt"
+	"sync"
+)
 
-type node struct {
+type Node struct {
+	mu sync.RWMutex
+
 	key    uint
-	values map[string]*leaf
-	parent *leaf
+	values map[string]*Leaf
+	parent *Leaf
 
 	// first set value
 	val string
 }
 
-func (n *node) has(k string) (ok bool) {
+func (n *Node) Key() uint {
+	return n.key
+}
+
+func (n *Node) Parent() *Leaf {
+	return n.parent
+}
+
+func (n *Node) AscendLeafs(it func(string, *Leaf) bool) bool {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	for k, l := range n.values {
+		if !it(k, l) {
+			return false
+		}
+	}
+	return true
+}
+
+func (n *Node) HasLeaf(k string) (ok bool) {
+	n.mu.RLock()
 	_, ok = n.values[k]
+	n.mu.RUnlock()
 	return
 }
 
-func (n *node) empty() bool {
-	return len(n.values) == 0
+func (n *Node) GetLeaf(k string) (ret *Leaf) {
+	n.mu.RLock()
+	ret = n.values[k]
+	n.mu.RUnlock()
+	return
 }
 
-func (n *node) set(val string, l *leaf) {
+func (n *Node) InsertLeaf(k string, l *Leaf) {
+	var has bool
+	n.mu.Lock()
 	if n.values == nil {
-		n.values = make(map[string]*leaf)
-	} else if _, ok := n.values[val]; ok {
-		panic(fmt.Sprintf("branch %v is already exists on node %v", val, n.key))
+		n.values = make(map[string]*Leaf)
+	} else {
+		_, has = n.values[k]
 	}
-	n.values[val] = l
+	n.values[k] = l
+	n.mu.Unlock()
 	l.parent = n
+	if has {
+		panic(fmt.Sprintf("node %v is already has %v", n.key, k))
+	}
 }
 
-func (n *node) leaf(val string) *leaf {
-	if val == "" {
-		panic("empty leaf value")
-	}
-	l, ok := n.values[val]
-	if !ok {
-		l = newLeaf(n)
-		n.set(val, l)
-	}
-	return l
-}
-
-func (n *node) remove(val string) *leaf {
-	ret, ok := n.values[val]
+func (n *Node) GetsertLeaf(k string) (ret *Leaf) {
+	var ok bool
+	n.mu.Lock()
+	ret, ok = n.values[k]
 	if ok {
-		delete(n.values, val)
+		n.mu.Unlock()
+		return
+	}
+	if n.values == nil {
+		n.values = make(map[string]*Leaf)
+	}
+	ret = newLeaf(n)
+	n.values[k] = ret
+	n.mu.Unlock()
+	return
+}
+
+func (n *Node) DeleteLeaf(k string) *Leaf {
+	n.mu.Lock()
+	ret, ok := n.values[k]
+	if ok {
+		delete(n.values, k)
 		ret.parent = nil
 	}
+	n.mu.Unlock()
 	return ret
+}
+
+func (n *Node) Empty() (ok bool) {
+	n.mu.RLock()
+	ok = len(n.values) == 0
+	n.mu.RUnlock()
+	return
 }

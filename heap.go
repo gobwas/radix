@@ -1,7 +1,7 @@
 package radix
 
 type record struct {
-	node  *node
+	node  *Node
 	score int64
 }
 
@@ -10,14 +10,14 @@ type Heap struct {
 	d     int
 	size  int
 	data  []record
-	index map[*node]int
+	index map[*Node]int
 }
 
 func NewHeap(d, n int) *Heap {
 	return &Heap{
 		d:     d,
 		data:  make([]record, 0, n),
-		index: make(map[*node]int),
+		index: make(map[*Node]int),
 	}
 }
 
@@ -33,12 +33,12 @@ func HeapFromSlice(data []record, d int) *Heap {
 	return h
 }
 
-func (h *Heap) Head() *node {
+func (h *Heap) Head() *Node {
 	return h.data[0].node
 }
 
 // Ascend iterates on all elements in heap starting from min.
-func (h *Heap) Ascend(cb func(x *node) bool) {
+func (h *Heap) Ascend(cb func(x *Node) bool) {
 	for i := 0; i < h.size; i++ {
 		if !cb(h.data[i].node) {
 			return
@@ -60,7 +60,7 @@ func (h *Heap) Update(i int, x record) {
 	}
 }
 
-func (h *Heap) Modify(x *node, delta int64) {
+func (h *Heap) Modify(x *Node, delta int64) {
 	i, ok := h.index[x]
 	if !ok {
 		panic("could not update record out of heap")
@@ -68,7 +68,7 @@ func (h *Heap) Modify(x *node, delta int64) {
 	h.Update(i, record{x, h.data[i].score + delta})
 }
 
-func (h *Heap) Less(a, b *node) bool {
+func (h *Heap) Less(a, b *Node) bool {
 	var i, j int
 	i, ok := h.index[a]
 	if ok {
@@ -80,7 +80,7 @@ func (h *Heap) Less(a, b *node) bool {
 	return i > j
 }
 
-func (h *Heap) Insert(x *node) {
+func (h *Heap) Insert(x *Node) {
 	i := h.size
 	if h.size == len(h.data) {
 		h.data = append(h.data, record{x, 0})
@@ -92,7 +92,7 @@ func (h *Heap) Insert(x *node) {
 	h.SiftUp(i)
 }
 
-func (h *Heap) Pop() *node {
+func (h *Heap) Pop() *Node {
 	ret := h.data[0]
 	h.data[0] = h.data[h.size-1]
 	h.size--

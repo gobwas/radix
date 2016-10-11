@@ -1,13 +1,15 @@
-package radix
+package radix_test
 
 import (
 	"bytes"
 	"fmt"
 	"math"
 	"math/rand"
-	"os"
 	"sort"
 	"testing"
+
+	. "github.com/gobwas/radix"
+	"github.com/gobwas/radix/graphviz"
 )
 
 type pairs []Pair
@@ -41,15 +43,14 @@ func TestTrieInsert(t *testing.T) {
 		for _, v := range test.values {
 			trie.Insert(PathFromSlice(test.insert...), v)
 		}
-		trie.heap.Ascend(func(x *node) bool {
-			if x.key != 2 {
-				return true
-			}
-			if !listEq(x.leaf("b").dataToSlice(), test.values) {
-				t.Errorf("[%d] leaf values is %v; want %v", i, x.leaf("b").data, test.values)
-			}
-			return false
+		var data []int
+		trie.ForEach(func(p Path, v int) bool {
+			data = append(data, v)
+			return true
 		})
+		if !listEq(data, test.values) {
+			t.Errorf("[%d] leaf values is %v; want %v", i, data, test.values)
+		}
 	}
 }
 
@@ -97,7 +98,7 @@ func TestTrieInsertLookup(t *testing.T) {
 			})
 			if !listEq(result, test.expect) {
 				buf := &bytes.Buffer{}
-				Graphviz(buf, fmt.Sprintf("test-%d", i), trie)
+				graphviz.Render(trie, fmt.Sprintf("test-%d", i), buf)
 				t.Errorf("[%d] Lookup(%v) = %v; want %v\nTrie graphviz:\n%s\n", i, p, result, test.expect, buf.String())
 			}
 		}
@@ -151,7 +152,7 @@ func TestTrieInsertDelete(t *testing.T) {
 		})
 		if !listEq(result, test.expect) {
 			buf := &bytes.Buffer{}
-			Graphviz(buf, fmt.Sprintf("test-%d", i), trie)
+			graphviz.Render(trie, fmt.Sprintf("test-%d", i), buf)
 			t.Errorf(
 				"[%d] after Delete; Lookup(%v) = %v; want %v\nTrie graphviz:\n%s\n",
 				i, pairs{}, result, test.expect, buf.String(),
@@ -284,15 +285,6 @@ func genTries(count, d, n, v int) (ret []*Trie, del [][]item_p) {
 		del = append(del, r)
 	}
 	return
-}
-
-func draw(d, n, v int) {
-	trie, deep := genTrie(d, n, v)
-	for _, item := range deep {
-		MarkNode(searchNode(trie, item.p))
-	}
-	Graphviz(os.Stdout, fmt.Sprintf("trie_%v_%v_%v", d, n, v), trie)
-	fmt.Fprintf(os.Stdout, "\n\n")
 }
 
 func benchmarkLookup(b *testing.B, d, n, v int) {

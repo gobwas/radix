@@ -1,33 +1,22 @@
 BENCH    ?= .
 GTFLAGS  ?=
-GRAPHVIZ ?= 0
 
 TEMPLATES = $(wildcard $(PWD)/*.go.h)
 GENERATED = $(wildcard $(PWD)/*_gen.go)
 
-enable_graphviz:
-	$(eval GRAPHVIZ:=1)
-
-disable_graphviz: 
-	$(eval GRAPHVIZ:=0)
-
-bin/viz: enable_graphviz generate0 _viz disable_graphviz generate1
-_viz:
+bin/viz: 
 	go build -o bin/viz ./tools/viz/...
 
 clean:
 	for file in $(GENERATED); do [ -f $$file ] && rm $$file; done
 
-test: enable_graphviz generate0 _test disable_graphviz generate1
-_test:
+test: 
 	go test -v
 
-bench: enable_graphviz generate0 _bench disable_graphviz generate1
-_bench: 
+bench: 
 	go test -run=none -bench=$(BENCH) -benchmem $(GTFLAGS)
 
-generate: generate0
-generate%:
+generate:
 	for tmpl in $(TEMPLATES); do \
 		name=`basename $$tmpl .h`; \
 		base=`basename $$name .go` \

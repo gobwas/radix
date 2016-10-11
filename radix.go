@@ -1,10 +1,10 @@
 package radix
 
 type Iterator func(int) bool
-type leafIterator func(*leaf) bool
+type leafIterator func(*Leaf) bool
 
 type Trie struct {
-	root *leaf
+	root *Leaf
 	heap *Heap
 }
 
@@ -17,16 +17,16 @@ func New() *Trie {
 
 func (t *Trie) Insert(p Path, v int) {
 	if p.Len() == 0 {
-		t.root.append(v)
+		t.root.Append(v)
 		return
 	}
-	t.root.insert(p, v, t.indexNode)
+	LeafInsert(t.root, p, v, t.indexNode)
 }
 
 func (t *Trie) Delete(path Path, v int) (ok bool) {
-	leafLookup(t.root, path, lookupStrict, func(l *leaf) bool {
+	leafLookup(t.root, path, lookupStrict, func(l *Leaf) bool {
 		// TODO(s.kamardin) cleanup empty leafs Without nodes
-		if l.remove(v) {
+		if l.Remove(v) {
 			ok = true
 		}
 		return true
@@ -35,34 +35,39 @@ func (t *Trie) Delete(path Path, v int) (ok bool) {
 }
 
 func (t *Trie) Lookup(path Path, it Iterator) {
-	leafLookup(t.root, path, lookupGreedy, func(l *leaf) bool {
-		if !l.iterate(it) {
+	leafLookup(t.root, path, lookupGreedy, func(l *Leaf) bool {
+		if !l.Ascend(it) {
 			return false
 		}
 		return true
 	})
 }
 
-func dig(path Path, lf *leaf, it func(Path, int) bool) bool {
-	ok := lf.iterate(func(v int) bool {
-		return it(path, v)
+func (t *Trie) ForEach(it func(Path, int) bool) {
+	dig(t.root, Path{}, func(path Path, lf *Leaf) bool {
+		return lf.Ascend(func(v int) bool {
+			return it(path, v)
+		})
 	})
-	if !ok {
-		return false
-	}
-	lf.ascendChildren(func(n *node) bool {
-		for k, lf := range n.values {
-			if !dig(path.With(n.key, k), lf, it) {
-				ok = false
-				return false
-			}
-		}
-		return true
-	})
-	return ok
 }
 
-func (t *Trie) ForEach(it func(Path, int) bool) { dig(Path{}, t.root, it) }
+type Visitor interface {
+	VisitNode(*Node) bool
+	VisitLeaf(Path, *Leaf) bool
+}
+
+func (t *Trie) Walk(p Path, v Visitor) {
+	var prev *Node
+	dig(t.root, p, func(path Path, lf *Leaf) bool {
+		if lf.parent != nil && lf.parent != prev {
+			if !v.VisitNode(lf.parent) {
+				return false
+			}
+			prev = lf.parent
+		}
+		return v.VisitLeaf(path, lf)
+	})
+}
 
 type lookupStrategy int
 
@@ -71,7 +76,7 @@ const (
 	lookupGreedy
 )
 
-func leafLookup(lf *leaf, path Path, s lookupStrategy, it leafIterator) bool {
+func leafLookup(lf *Leaf, path Path, s lookupStrategy, it leafIterator) bool {
 	switch s {
 	case lookupStrict:
 		if path.Len() == 0 {
@@ -83,24 +88,38 @@ func leafLookup(lf *leaf, path Path, s lookupStrategy, it leafIterator) bool {
 		}
 	}
 	min, max := path.Min(), path.Max()
-	return lf.ascendChildrenRange(min.Key, max.Key, func(n *node) bool {
+	return lf.AscendChildrenRange(min.Key, max.Key, func(n *Node) bool {
 		v, ok := path.Get(n.key)
-		if ok && n.has(v) && !leafLookup(n.leaf(v), path.Without(n.key), s, it) {
+		if ok && n.HasLeaf(v) && !leafLookup(n.GetsertLeaf(v), path.Without(n.key), s, it) {
 			return false
 		}
 		return true
 	})
 }
 
-func search(lf *leaf, path Path) (ret []*node) {
+func dig(lf *Leaf, path Path, it func(Path, *Leaf) bool) bool {
+	if !it(path, lf) {
+		return false
+	}
+	return lf.AscendChildren(func(n *Node) bool {
+		for k, lf := range n.values {
+			if !dig(lf, path.With(n.key, k), it) {
+				return false
+			}
+		}
+		return true
+	})
+}
+
+func search(lf *Leaf, path Path) (ret []*Node) {
 	min, max := path.Min(), path.Max()
-	lf.ascendChildrenRange(min.Key, max.Key, func(n *node) bool {
+	lf.AscendChildrenRange(min.Key, max.Key, func(n *Node) bool {
 		if v, ok := path.Get(n.key); ok {
 			if path.Len() == 1 {
 				ret = append(ret, n)
 			}
-			if n.has(v) {
-				ret = append(ret, search(n.leaf(v), path.Without(n.key))...)
+			if n.HasLeaf(v) {
+				ret = append(ret, search(n.GetsertLeaf(v), path.Without(n.key))...)
 			}
 		}
 		return true
@@ -108,33 +127,33 @@ func search(lf *leaf, path Path) (ret []*node) {
 	return
 }
 
-func searchNode(t *Trie, path Path) *node {
+func SearchNode(t *Trie, path Path) *Node {
 	if n := search(t.root, path); len(n) > 0 {
 		return n[0]
 	}
 	return nil
 }
 
-func (t *Trie) indexNode(n *node) {
+func (t *Trie) indexNode(n *Node) {
 	t.heap.Insert(n)
 }
 
-type nodeIndexer func(n *node)
+type nodeIndexer func(n *Node)
 
 // major searches for highest majority element in node values.
 // It applies boyer-moore voting algorithm.
-func major(n *node) (*node, int, int) {
+func major(n *Node) (*Node, int, int) {
 	var total int
 	var counter int
-	var candidate *node
+	var candidate *Node
 	for _, l := range n.values {
-		l.ascendChildren(func(child *node) bool {
+		l.AscendChildren(func(child *Node) bool {
 			total++
 			switch {
 			case counter == 0:
 				candidate = child
 				counter = 1
-			case child.key == candidate.key && child.has(candidate.val):
+			case child.key == candidate.key && child.HasLeaf(candidate.val):
 				counter++
 			default:
 				counter--
@@ -147,8 +166,8 @@ func major(n *node) (*node, int, int) {
 	}
 	counter = 0
 	for _, l := range n.values {
-		l.ascendChildren(func(child *node) bool {
-			if child.key == candidate.key && child.has(candidate.val) {
+		l.AscendChildren(func(child *Node) bool {
+			if child.key == candidate.key && child.HasLeaf(candidate.val) {
 				counter++
 			}
 			return true
@@ -157,9 +176,9 @@ func major(n *node) (*node, int, int) {
 	return candidate, counter, total
 }
 
-// siftUp pulls up given node in the tree.
+// SiftUp pulls up given node in the tree.
 // Its like rotate left in the tree when the node is on the right side. =)
-func siftUp(n *node) *node {
+func SiftUp(n *Node) *Node {
 	pLeaf := n.parent     // parent leaf
 	pNode := pLeaf.parent // parent node
 	if pNode == nil {
@@ -170,12 +189,12 @@ func siftUp(n *node) *node {
 		return n
 	}
 	// twin clone of n
-	nn := &node{
+	nn := &Node{
 		key:    n.key,
 		parent: root,
 	}
 	for val, l := range pNode.values {
-		l.ascendChildren(func(child *node) bool {
+		l.AscendChildren(func(child *Node) bool {
 			switch {
 			//	case child.key != n.key:
 			//		lf := nn.leaf(any)
@@ -185,20 +204,20 @@ func siftUp(n *node) *node {
 			//ch.set(val, pNode.remove(val)) // todo could copy pNode's val, to be like immutable
 
 			case child.key == n.key:
-				l.removeChild(child.key)
-				if l.empty() {
-					pNode.remove(val)
-					if pNode.empty() {
-						root.removeChild(pNode.key)
+				l.RemoveChild(child.key)
+				if l.Empty() {
+					pNode.DeleteLeaf(val)
+					if pNode.Empty() {
+						root.RemoveChild(pNode.key)
 					}
 				}
 				for v, lf := range child.values {
-					nlf := nn.leaf(v)
-					chn := nlf.getChild(pNode.key)
-					chlf := chn.leaf(val)
+					nlf := nn.GetsertLeaf(v)
+					chn := nlf.GetsertChild(pNode.key)
+					chlf := chn.GetsertLeaf(val)
 					chlf.data = lf.data
 					chlf.children = lf.children
-					chlf.ascendChildren(func(c *node) bool {
+					chlf.AscendChildren(func(c *Node) bool {
 						c.parent = chlf
 						return true
 					})
@@ -211,37 +230,37 @@ func siftUp(n *node) *node {
 			return true
 		})
 	}
-	root.addChild(nn)
+	root.AddChild(nn)
 	return nn
 }
 
-func compress(n *node) {
+func compress(n *Node) {
 	m, met, total := major(n)
 	if met > total/2 {
-		siftUp(m)
+		SiftUp(m)
 	}
 }
 
-func makeTree(p Path, v int, cb nodeIndexer) *node {
+func makeTree(p Path, v int, cb nodeIndexer) *Node {
 	last, cur, ok := p.Last()
 	if !ok {
 		panic("could not make tree with empty path")
 	}
-	cn := &node{
+	cn := &Node{
 		key: last.Key,
 		val: last.Value,
 	}
-	cl := cn.leaf(last.Value)
-	cl.append(v)
+	cl := cn.GetsertLeaf(last.Value)
+	cl.Append(v)
 	cb(cn)
 
 	p.Descend(cur, func(p Pair) bool {
-		n := &node{
+		n := &Node{
 			key: p.Key,
 			val: p.Value,
 		}
-		l := n.leaf(p.Value)
-		l.addChild(cn)
+		l := n.GetsertLeaf(p.Value)
+		l.AddChild(cn)
 
 		cb(n)
 		cn, cl = n, l
