@@ -23,8 +23,12 @@ func (p *PathBuilder) Add(k uint, v string) {
 	p.size++
 }
 
-func (p *PathBuilder) Build() Path {
-	return PathFromSlice(p.pairs)
+func (p *PathBuilder) Build() (ret Path, err error) {
+	ret = PathFromSlice(p.pairs)
+	if p.size != len(p.pairs) {
+		err = fmt.Errorf("requested builder to store %d pairs, but set only %d", len(p.pairs), p.size)
+	}
+	return
 }
 
 type PathCursor int
