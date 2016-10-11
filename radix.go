@@ -82,7 +82,8 @@ func leafLookup(lf *leaf, path Path, s lookupStrategy, it leafIterator) bool {
 			return false
 		}
 	}
-	return lf.ascendChildrenRange(path.Min(), path.Max(), func(n *node) bool {
+	min, max := path.Min(), path.Max()
+	return lf.ascendChildrenRange(min.Key, max.Key, func(n *node) bool {
 		v, ok := path.Get(n.key)
 		if ok && n.has(v) && !leafLookup(n.leaf(v), path.Without(n.key), s, it) {
 			return false
@@ -92,7 +93,8 @@ func leafLookup(lf *leaf, path Path, s lookupStrategy, it leafIterator) bool {
 }
 
 func search(lf *leaf, path Path) (ret []*node) {
-	lf.ascendChildrenRange(path.Min(), path.Max(), func(n *node) bool {
+	min, max := path.Min(), path.Max()
+	lf.ascendChildrenRange(min.Key, max.Key, func(n *node) bool {
 		if v, ok := path.Get(n.key); ok {
 			if path.Len() == 1 {
 				ret = append(ret, n)

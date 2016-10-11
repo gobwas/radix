@@ -7,4 +7,10 @@
 
 package radix
 
+func (p Path) has(k uint) (int, bool) {
+	DO_SEARCH(p.pairs, k, i, ok)
+	ok = ok && p.includes(i)
+	return i, ok
+}
+
 GEN_SORT(Pair, uint)

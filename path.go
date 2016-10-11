@@ -55,8 +55,8 @@ func (p Path) Get(k uint) (string, bool) {
 	return p.pairs[i].Value, true
 }
 
-func (p Path) Last() (Pair, PathCursor, bool) {
-	for i := len(p.pairs) - 1; i >= 0; i-- {
+func (p Path) First() (Pair, PathCursor, bool) {
+	for i := 0; i < len(p.pairs); i++ {
 		if p.includes(i) {
 			return p.pairs[i], PathCursor(i), true
 		}
@@ -64,8 +64,8 @@ func (p Path) Last() (Pair, PathCursor, bool) {
 	return Pair{}, PathCursor(-1), false
 }
 
-func (p Path) First() (Pair, PathCursor, bool) {
-	for i := 0; i < len(p.pairs); i++ {
+func (p Path) Last() (Pair, PathCursor, bool) {
+	for i := len(p.pairs) - 1; i >= 0; i-- {
 		if p.includes(i) {
 			return p.pairs[i], PathCursor(i), true
 		}
@@ -102,14 +102,14 @@ func (p Path) AscendRange(a, b uint, cb func(Pair) bool) {
 	}
 }
 
-func (p Path) Min() uint {
-	v, _, _ := p.First()
-	return v.Key
+func (p Path) Min() (r Pair) {
+	r, _, _ = p.First()
+	return
 }
 
-func (p Path) Max() uint {
-	v, _, _ := p.Last()
-	return v.Key
+func (p Path) Max() (r Pair) {
+	r, _, _ = p.Last()
+	return r
 }
 
 func (p Path) With(k uint, v string) Path {
@@ -149,16 +149,10 @@ func (p Path) includes(i int) bool {
 	return p.excluded&(1<<uint(i)) == 0
 }
 
-func (p Path) include(i int) {
+func (p *Path) include(i int) {
 	p.excluded &^= 1 << uint(i)
 }
 
-func (p Path) exclude(i int) {
+func (p *Path) exclude(i int) {
 	p.excluded |= 1 << uint(i)
-}
-
-func (p Path) has(k uint) (i int, ok bool) {
-	i, ok = pairSearch(p.pairs, k)
-	ok = ok && p.includes(i)
-	return
 }

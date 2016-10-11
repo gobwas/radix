@@ -8,4 +8,4 @@
 
 package radix
 
-GEN_ARRAY(*node, uint)
+MAKE_ARRAY(*node, uint)

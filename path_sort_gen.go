@@ -1,5 +1,31 @@
 package radix
 
+func (p Path) has(k uint) (int, bool) {
+	// Inlined binary search
+	var ok bool
+	var i int
+	{
+		l := 0
+		r := len(p.pairs)
+		for !ok && l < r {
+			m := l + (r-l)/2
+			switch {
+			case p.pairs[m].Key == k:
+				ok = true
+				r = m
+			case p.pairs[m].Key < k:
+				l = m + 1
+			case p.pairs[m].Key > k:
+				r = m
+			}
+		}
+		i = r
+		_ = i // in case when i not being used
+	}
+	ok = ok && p.includes(i)
+	return i, ok
+}
+
 func pairPartition(data []Pair, l, r int) int {
 	// Inlined partition algorithm
 	var j int
@@ -65,21 +91,24 @@ func pairSort(data []Pair, l, r int) {
 func pairSearch(data []Pair, key uint) (int, bool) {
 	// Inlined binary search
 	var ok bool
-	i := len(data)
+	var i int
 	{
 		l := 0
-		for !ok && l < i {
-			m := l + (i-l)/2
+		r := len(data)
+		for !ok && l < r {
+			m := l + (r-l)/2
 			switch {
 			case data[m].Key == key:
 				ok = true
-				i = m
+				r = m
 			case data[m].Key < key:
 				l = m + 1
 			case data[m].Key > key:
-				i = m
+				r = m
 			}
 		}
+		i = r
+		_ = i // in case when i not being used
 	}
 	return i, ok
 }

@@ -1,6 +1,9 @@
 #define SLICE(a) []a
 #define VAR(a) i##a
 
+#define _CONCAT(a, b) a ## b
+#define CONCAT(a, b) _CONCAT(a, b)
+
 #define GEN_SORT(T, K);;\
 	func FUNC(Partition)(data SLICE(T), l, r int) int {;;\
 		DO_PARTITION(data, l, r, j);;\
@@ -33,10 +36,10 @@
 	DATA[A], DATA[B] = DATA[B], DATA[A]\
 
 #define DO_PARTITION(DATA, L, R, PIVOT)\
-	;Inlined partition algorithm;;\
+	>>> Inlined partition algorithm;;\
 	var PIVOT int;;\
 	{;;\
-		;Let x be a pivot;;\
+		>>> Let x be a pivot;;\
 		x := DATA[L];;\
 		PIVOT = L;;\
 		for i := L + 1; i < R; i++ {;;\
@@ -49,36 +52,39 @@
 	}\
 
 #define DO_INSERTION_SORT(DATA, L, R)\
-	;Inlined insertion sort;;\
+	>>> Inlined insertion sort;;\
 	for i := L + 1;; i < R;; i++ {;;\
 		for j := i;; j > L && GREATER(DATA[j-1], DATA[j]);; j-- {;;\
 			data[j], data[j-1] = data[j-1], data[j];;\
 		};;\
 	}\
 
-#define DO_SEARCH(DATA, KEY, RIGHT, OK)\
-	;Inlined binary search;;\
+#define DO_SEARCH_RANGE(DATA, KEY, LEFT, RIGHT, RESULT, OK)\
+	>>> Inlined binary search;;\
 	var OK bool;;\
-	RIGHT := len(DATA);;\
+	var RESULT int;;\
 	{;;\
-		l := 0;;\
-		for !OK && l < RIGHT {;;\
-			m := l + (RIGHT-l)/2;;\
+		l := LEFT;;\
+		r := RIGHT;;\
+		for !OK && l < r {;;\
+			m := l + (r-l)/2;;\
 			switch {;;\
 			case ID(DATA[m]) == KEY:;;\
 				OK = true;;\
-				RIGHT = m;;\
+				r = m;;\
 			case ID(DATA[m]) < KEY:;;\
 				l = m + 1;;\
 			case ID(DATA[m]) > KEY:;;\
-				RIGHT = m;;\
+				r = m;;\
 			};;\
 		};;\
+		RESULT = r;;\
+		_ = RESULT >>> in case when RESULT not being used;;\
 	}\
+	
 
-
-#define _CONCAT(a, b) a ## b
-#define CONCAT(a, b) _CONCAT(a, b)
+#define DO_SEARCH(DATA, KEY, RESULT, OK)\
+	DO_SEARCH_RANGE(DATA, KEY, 0, len(DATA), RESULT, OK)\
 
 #define DO_SEARCH_SHORT(DATA, KEY, RIGHT)\
 	DO_SEARCH(DATA, KEY, RIGHT, CONCAT(ok, __COUNTER__))\

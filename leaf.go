@@ -26,8 +26,9 @@ func (l *leaf) insert(path Path, value int, cb nodeIndexer) {
 			return
 		}
 		var has bool
+		min, max := path.Min(), path.Max()
 		// TODO(s.kamardin): use heap sort here to detect max miss factored node.
-		l.ascendChildrenRange(path.Min(), path.Max(), func(n *node) bool {
+		l.ascendChildrenRange(min.Key, max.Key, func(n *node) bool {
 			if v, ok := path.Get(n.key); ok {
 				l = n.leaf(v)
 				path = path.Without(n.key)

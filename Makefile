@@ -26,7 +26,7 @@ generate:
 		output="$${base}_gen.go"; \
 		tmp="$${output}.tmp"; \
 	   	cc -Iinclude -DGRAPHVIZ=$(GRAPHVIZ) -E -P $$tmpl \
-			| sed -E -e 's/ ;([a-zA-Z0-9])/\/\/ \1/g' \
+			| sed -E -e 's/>>>/\/\//g' \
 			| sed -e $$'s/;;/\\\n/g' \
 		   	> $$tmp; \
 		gofmt $$tmp > $$output; \
