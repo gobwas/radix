@@ -1,0 +1,93 @@
+package table
+
+import (
+	"reflect"
+	"testing"
+)
+
+func TestHeapInsert(t *testing.T) {
+	for i, test := range []struct {
+		d      int
+		insert []Item
+		expect []Item
+		sorted []Item
+	}{
+		{
+			d:      2,
+			insert: []Item{Int(0), Int(2), Int(1)},
+			expect: []Item{Int(0), Int(2), Int(1)},
+			sorted: []Item{Int(0), Int(1), Int(2)},
+		},
+		{
+			d:      4,
+			insert: []Item{Int(5), Int(0), Int(9), Int(2), Int(1), Int(3)},
+			expect: []Item{Int(0), Int(3), Int(9), Int(2), Int(1), Int(5)},
+			sorted: []Item{Int(0), Int(1), Int(2), Int(3), Int(5), Int(9)},
+		},
+	} {
+		h := NewHeap(test.d, len(test.insert))
+		for _, v := range test.insert {
+			h.Insert(v)
+		}
+		if !reflect.DeepEqual(h.data, test.expect) {
+			t.Errorf("[%d] heap data is %v after insertion of %v into %d-ary heap; want %v", i, h.data, test.insert, test.d, test.expect)
+			continue
+		}
+		sorted := make([]Item, len(test.insert))
+		for i := range test.insert {
+			sorted[i] = h.Pop()
+		}
+		if !reflect.DeepEqual(sorted, test.sorted) {
+			t.Errorf("[%d] sorted as %v after insertion of %v into %d-ary heap; want %v", i, sorted, test.insert, test.d, test.sorted)
+			continue
+		}
+	}
+}
+
+func TestHeapMinNext(t *testing.T) {
+	for i, test := range []struct {
+		d      int
+		insert []Item
+		update []Item
+		exp    []Item
+	}{
+		{
+			d:      2,
+			insert: []Item{Int(0), Int(2), Int(1)},
+			update: []Item{Int(9)},
+			exp:    []Item{Int(1), Int(2), Int(9)},
+		},
+		{
+			d:      2,
+			insert: []Item{Int(0), Int(2), Int(1)},
+			update: []Item{nil, Int(9)},
+			exp:    []Item{Int(0), Int(9), Int(1)},
+		},
+		{
+			d:      2,
+			insert: []Item{Int(0), Int(2), Int(1)},
+			update: []Item{nil, nil, Int(9)},
+			exp:    []Item{Int(0), Int(2), Int(9)},
+		},
+		{
+			d:      2,
+			insert: []Item{Int(0), Int(2), Int(1)},
+			update: []Item{Int(9), Int(5), Int(2)},
+			exp:    []Item{Int(1), Int(5), Int(2)},
+		},
+	} {
+		h := NewHeap(test.d, len(test.insert))
+		for _, v := range test.insert {
+			h.Insert(v)
+		}
+		for i, v := range test.update {
+			if v != nil {
+				h.Update(i, v)
+			}
+		}
+		if !reflect.DeepEqual(h.data, test.exp) {
+			t.Errorf("[%d] heap data is %v after %v Update() calls to %d-ary heap (inserted %v); want %v", i, h.data, test.update, test.d, test.insert, test.exp)
+			continue
+		}
+	}
+}

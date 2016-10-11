@@ -1,48 +1,32 @@
 package radix
 
-import (
-	"fmt"
-)
-
-const any = "*"
-
 type Iterator func(int) bool
-type leafIterator func(*leaf) bool
+type leafIterator func(*Leaf) bool
 
 type Trie struct {
-	root  leaf
-	nodes map[uint]*node
+	root *Leaf
+	heap *Heap
 }
 
 func New() *Trie {
 	return &Trie{
-		nodes: make(map[uint]*node),
+		root: newLeaf(nil),
+		heap: NewHeap(2, 0),
 	}
 }
 
 func (t *Trie) Insert(p Path, v int) {
 	if p.Len() == 0 {
-		t.root.data = append(t.root.data, v)
+		t.root.Append(v)
 		return
 	}
-	if t.root.child == nil {
-		t.root.child = makeTree(p, v, t.indexNode)
-		t.root.child.parent = &t.root
-		return
-	}
-	t.root.child.insert(p, v, t.indexNode)
+	LeafInsert(t.root, p, v, t.indexNode)
 }
 
 func (t *Trie) Delete(path Path, v int) (ok bool) {
-	if path.Len() == 0 {
-		return t.root.remove(v)
-	}
-	if t.root.child == nil {
-		return
-	}
-	strictLookup(t.root.child, path, func(l *leaf) bool {
-		// todo use storage interface
-		if l.remove(v) {
+	leafLookup(t.root, path, lookupStrict, func(l *Leaf) bool {
+		// TODO(s.kamardin) cleanup empty leafs Without nodes
+		if l.Remove(v) {
 			ok = true
 		}
 		return true
@@ -51,324 +35,236 @@ func (t *Trie) Delete(path Path, v int) (ok bool) {
 }
 
 func (t *Trie) Lookup(path Path, it Iterator) {
-	if !t.root.iterate(it) || t.root.child == nil {
-		return
-	}
-	greedyLookup(t.root.child, path, func(l *leaf) bool {
-		if !l.iterate(it) {
+	leafLookup(t.root, path, lookupGreedy, func(l *Leaf) bool {
+		if !l.Ascend(it) {
 			return false
 		}
 		return true
 	})
 }
 
-type lookupFn func(*node, Path, leafIterator) bool
-
-func checkLeaf(lf *leaf, path Path, it leafIterator, lookup lookupFn) bool {
-	if !it(lf) {
-		return false
-	}
-	if lf.child != nil && !lookup(lf.child, path, it) {
-		return false
-	}
-	return true
+func (t *Trie) ForEach(it func(Path, int) bool) {
+	dig(t.root, Path{}, func(path Path, lf *Leaf) bool {
+		return lf.Ascend(func(v int) bool {
+			return it(path, v)
+		})
+	})
 }
 
-// greedyLookup searches values in greedy manner.
-// It first searches all strict equal leafs.
-// Then in searches all 'any' valued leafs.
-// If node has key k, and it is not present in path, then it will
-// dig in all leafs of node.
-func greedyLookup(n *node, path Path, it leafIterator) (ret bool) {
-	pw, v, ok := path.Without(n.key)
-	if !ok {
-		for _, lf := range n.values {
-			if !checkLeaf(lf, pw, it, greedyLookup) {
+type Visitor interface {
+	VisitNode(*Node) bool
+	VisitLeaf(Path, *Leaf) bool
+}
+
+func (t *Trie) Walk(p Path, v Visitor) {
+	var prev *Node
+	dig(t.root, p, func(path Path, lf *Leaf) bool {
+		if lf.parent != nil && lf.parent != prev {
+			if !v.VisitNode(lf.parent) {
+				return false
+			}
+			prev = lf.parent
+		}
+		return v.VisitLeaf(path, lf)
+	})
+}
+
+type lookupStrategy int
+
+const (
+	lookupStrict lookupStrategy = iota
+	lookupGreedy
+)
+
+func leafLookup(lf *Leaf, path Path, s lookupStrategy, it leafIterator) bool {
+	switch s {
+	case lookupStrict:
+		if path.Len() == 0 {
+			return it(lf)
+		}
+	case lookupGreedy:
+		if !it(lf) {
+			return false
+		}
+	}
+	min, max := path.Min(), path.Max()
+	return lf.AscendChildrenRange(min.Key, max.Key, func(n *Node) bool {
+		v, ok := path.Get(n.key)
+		if ok && n.HasLeaf(v) && !leafLookup(n.GetsertLeaf(v), path.Without(n.key), s, it) {
+			return false
+		}
+		return true
+	})
+}
+
+func dig(lf *Leaf, path Path, it func(Path, *Leaf) bool) bool {
+	if !it(path, lf) {
+		return false
+	}
+	return lf.AscendChildren(func(n *Node) bool {
+		for k, lf := range n.values {
+			if !dig(lf, path.With(n.key, k), it) {
 				return false
 			}
 		}
 		return true
-	}
-	if n.has(v) && !checkLeaf(n.leaf(v), pw, it, greedyLookup) {
-		return false
-	}
-	if n.has(any) && !checkLeaf(n.leaf(any), pw, it, greedyLookup) {
-		return false
-	}
-	return true
+	})
 }
 
-func strictLookup(n *node, path Path, it leafIterator) bool {
-	pw, v, ok := path.Without(n.key)
-	if !ok {
-		for _, lf := range n.values {
-			if !checkLeaf(lf, pw, it, strictLookup) {
-				return false
+func search(lf *Leaf, path Path) (ret []*Node) {
+	min, max := path.Min(), path.Max()
+	lf.AscendChildrenRange(min.Key, max.Key, func(n *Node) bool {
+		if v, ok := path.Get(n.key); ok {
+			if path.Len() == 1 {
+				ret = append(ret, n)
+			}
+			if n.HasLeaf(v) {
+				ret = append(ret, search(n.GetsertLeaf(v), path.Without(n.key))...)
 			}
 		}
 		return true
-	}
-	if n.has(v) && !checkLeaf(n.leaf(v), pw, it, strictLookup) {
-		return false
-	}
-	return true
+	})
+	return
 }
 
-func searchNode(t *Trie, path Path) *node {
-	if t.root.child == nil {
-		return nil
+func SearchNode(t *Trie, path Path) *Node {
+	if n := search(t.root, path); len(n) > 0 {
+		return n[0]
 	}
-	n := t.root.child
-	var v string
-	var ok bool
-	for path.Len() > 0 && n != nil {
-		path, v, ok = path.Without(n.key)
-		if !ok || !n.has(v) {
-			return nil
-		}
-		n = n.leaf(v).child
-	}
-	return n
+	return nil
 }
 
-func (t *Trie) indexNode(n *node) {
-	t.nodes[n.key] = n
+func (t *Trie) indexNode(n *Node) {
+	t.heap.Insert(n)
 }
 
-type nodeIndexer func(n *node)
+type nodeIndexer func(n *Node)
 
 // major searches for highest majority element in node values.
 // It applies boyer-moore voting algorithm.
-func major(n *node) (*node, int, int) {
+func major(n *Node) (*Node, int, int) {
 	var total int
 	var counter int
-	var candidate *node
+	var candidate *Node
 	for _, l := range n.values {
-		total++
-		if l.child == nil {
-			continue
-		}
-		switch {
-		case counter == 0:
-			candidate = l.child
-			counter = 1
-		case l.child.key == candidate.key && l.child.has(candidate.val):
-			counter++
-		default:
-			counter--
-		}
+		l.AscendChildren(func(child *Node) bool {
+			total++
+			switch {
+			case counter == 0:
+				candidate = child
+				counter = 1
+			case child.key == candidate.key && child.HasLeaf(candidate.val):
+				counter++
+			default:
+				counter--
+			}
+			return true
+		})
 	}
 	if candidate == nil {
 		return nil, -1, total
 	}
 	counter = 0
 	for _, l := range n.values {
-		if l.child != nil && l.child.key == candidate.key && l.child.has(candidate.val) {
-			counter++
-		}
+		l.AscendChildren(func(child *Node) bool {
+			if child.key == candidate.key && child.HasLeaf(candidate.val) {
+				counter++
+			}
+			return true
+		})
 	}
 	return candidate, counter, total
 }
 
-// siftUp pulls up given node in the tree.
+// SiftUp pulls up given node in the tree.
 // Its like rotate left in the tree when the node is on the right side. =)
-func siftUp(n *node) *node {
+func SiftUp(n *Node) *Node {
 	pLeaf := n.parent     // parent leaf
 	pNode := pLeaf.parent // parent node
+	if pNode == nil {
+		return n
+	}
 	root := pNode.parent
 	if root == nil { // could not perform rotation
 		return n
 	}
 	// twin clone of n
-	nn := &node{
+	nn := &Node{
 		key:    n.key,
 		parent: root,
 	}
 	for val, l := range pNode.values {
-		switch {
-		case l.child == nil || l.child.key != n.key:
-			lf := nn.leaf(any)
-			ch := lf.ensureChild(pNode.key)
-			ch.set(val, pNode.remove(val)) // todo could copy pNode's val, to be like immutable
+		l.AscendChildren(func(child *Node) bool {
+			switch {
+			//	case child.key != n.key:
+			//		lf := nn.leaf(any)
+			//		ch := lf.getChild(pNode.key)
+			//		chlf := ch.leaf(val)
+			//		chlf.addChild(child)
+			//ch.set(val, pNode.remove(val)) // todo could copy pNode's val, to be like immutable
 
-		case l.child.key == n.key:
-			if len(l.data) > 0 {
-				lf := nn.leaf(any)
-				chn := lf.ensureChild(pNode.key)
-				clf := chn.leaf(val)
-				clf.data = append(clf.data, l.data...)
-			}
-
-			// merge l.child.values with nn.values
-			for v, lf := range l.child.values {
-				nlf := nn.leaf(v)
-				chn := nlf.ensureChild(pNode.key)
-
-				chlf := chn.leaf(val)
-				chlf.data = lf.data
-				chlf.child = lf.child
-				if chlf.child != nil {
-					chlf.child.parent = chlf
+			case child.key == n.key:
+				l.RemoveChild(child.key)
+				if l.Empty() {
+					pNode.DeleteLeaf(val)
+					if pNode.Empty() {
+						root.RemoveChild(pNode.key)
+					}
 				}
-
-				// cleanup
-				//lf.data = nil
-				//lf.child = nil
-				//lf.parent = nil
+				for v, lf := range child.values {
+					nlf := nn.GetsertLeaf(v)
+					chn := nlf.GetsertChild(pNode.key)
+					chlf := chn.GetsertLeaf(val)
+					chlf.data = lf.data
+					chlf.children = lf.children
+					chlf.AscendChildren(func(c *Node) bool {
+						c.parent = chlf
+						return true
+					})
+					// cleanup
+					lf.data = nil
+					lf.children = nodeArray{}
+					lf.parent = nil
+				}
 			}
-		}
+			return true
+		})
 	}
-	nn.parent = root
-	root.child = nn
+	root.AddChild(nn)
 	return nn
 }
 
-func compress(n *node) {
+func compress(n *Node) {
 	m, met, total := major(n)
 	if met > total/2 {
-		siftUp(m)
+		SiftUp(m)
 	}
 }
 
-type node struct {
-	key    uint
-	values map[string]*leaf
-	parent *leaf
-
-	// first set value
-	val string
-}
-
-func (n *node) has(k string) (ok bool) {
-	_, ok = n.values[k]
-	return
-}
-
-func (n *node) set(val string, l *leaf) {
-	if n.values == nil {
-		n.values = make(map[string]*leaf)
-	} else if _, ok := n.values[val]; ok {
-		panic(fmt.Sprintf("branch %v is already exists on node %v", val, n.key))
-	}
-	n.values[val] = l
-	l.parent = n
-}
-
-func (n *node) leaf(val string) *leaf {
-	l, ok := n.values[val]
+func makeTree(p Path, v int, cb nodeIndexer) *Node {
+	last, cur, ok := p.Last()
 	if !ok {
-		l = &leaf{parent: n}
-		n.set(val, l)
+		panic("could not make tree with empty path")
 	}
-	return l
-}
-
-func (n *node) remove(val string) *leaf {
-	ret, ok := n.values[val]
-	if ok {
-		delete(n.values, val)
-		ret.parent = nil
+	cn := &Node{
+		key: last.Key,
+		val: last.Value,
 	}
-	return ret
-}
-
-func (n *node) insert(path Path, value int, cb nodeIndexer) {
-	for {
-		pw, v, ok := path.Without(n.key)
-		if ok {
-			path = pw
-		} else {
-			v = any
-		}
-		l := n.leaf(v)
-		if path.Len() == 0 {
-			l.data = append(l.data, value)
-			return
-		}
-		if n = l.child; n == nil {
-			// Create whole chain of p with v at the end.
-			l.child = makeTree(path, value, cb)
-			l.child.parent = l
-			return
-		}
-	}
-}
-
-type leaf struct {
-	data   []int
-	child  *node
-	parent *node
-}
-
-func (l *leaf) ensureChild(key uint) (ret *node) {
-	if l.child == nil {
-		ret = &node{
-			key:    key,
-			parent: l,
-		}
-		l.child = ret
-	} else if l.child.key == key {
-		ret = l.child
-	} else {
-		panic(fmt.Sprintf("leaf has child %v; want %v", l.child.key, key))
-	}
-	return
-}
-
-// todo use store
-func (l *leaf) remove(v int) (ok bool) {
-	for i, e := range l.data {
-		if ok = e == v; ok {
-			n := len(l.data)
-			d := make([]int, n-1)
-			copy(d[:i], l.data[:i])
-			copy(d[i:], l.data[i+1:])
-			l.data = d
-			return
-		}
-	}
-	return
-}
-
-func (l *leaf) iterate(it Iterator) bool {
-	for _, v := range l.data {
-		if !it(v) {
-			return false
-		}
-	}
-	return true
-}
-
-func makeTree(p Path, v int, cb nodeIndexer) *node {
-	n := p.Len()
-	// Make the last one node.
-	cl := &leaf{
-		data: []int{v},
-	}
-	cn := &node{
-		key: p.At(n - 1).Key,
-		values: map[string]*leaf{
-			p.At(n - 1).Value: cl,
-		},
-		val: p.At(n - 1).Value,
-	}
-	cl.parent = cn
+	cl := cn.GetsertLeaf(last.Value)
+	cl.Append(v)
 	cb(cn)
-	for i := n - 2; i >= 0; i-- {
-		l := &leaf{
-			child: cn,
+
+	p.Descend(cur, func(p Pair) bool {
+		n := &Node{
+			key: p.Key,
+			val: p.Value,
 		}
-		n := &node{
-			key: p.At(i).Key,
-			values: map[string]*leaf{
-				p.At(i).Value: l,
-			},
-			val: p.At(i).Value,
-		}
-		l.parent = n
-		cn.parent = l
+		l := n.GetsertLeaf(p.Value)
+		l.AddChild(cn)
+
 		cb(n)
 		cn, cl = n, l
-	}
+		return true
+	})
 	return cn
 }

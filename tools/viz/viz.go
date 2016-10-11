@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/gobwas/radix"
+	"github.com/gobwas/radix/graphviz"
 )
 
 var sift = flag.String("sift", "", "which key to sift up in the trie")
@@ -18,7 +19,7 @@ var del = flag.String("del", "", "which key to delete in the trie")
 var siftN = flag.Int("sift_times", 1, "how much to sift up found node")
 var label = flag.String("label", "radix.Trie", "label to draw in graphviz diagram")
 
-func scanPath(r io.Reader) (path radix.Pairs, number string, err error) {
+func scanPath(r io.Reader) (path radix.Path, number string, err error) {
 	ws := bufio.NewScanner(r)
 	ws.Split(bufio.ScanWords)
 	var i int
@@ -31,7 +32,7 @@ func scanPath(r io.Reader) (path radix.Pairs, number string, err error) {
 			if err != nil {
 				return
 			}
-			path = append(path, radix.Pair{uint(key), txt})
+			path = path.With(uint(key), txt)
 		} else {
 			number = txt
 		}
@@ -39,7 +40,7 @@ func scanPath(r io.Reader) (path radix.Pairs, number string, err error) {
 	return
 }
 
-func scanPathVal(r io.Reader) (path radix.Pairs, val int, err error) {
+func scanPathVal(r io.Reader) (path radix.Path, val int, err error) {
 	var rem string
 	path, rem, err = scanPath(r)
 	if err != nil {
@@ -74,7 +75,7 @@ func main() {
 	}
 
 	// initial tree
-	radix.Graphviz(os.Stdout, *label, t)
+	graphviz.Render(t, *label, os.Stdout)
 
 	if *sift != "" {
 		path, _, err := scanPath(strings.NewReader(*sift))
@@ -83,10 +84,14 @@ func main() {
 		}
 		n := radix.SearchNode(t, path)
 		if n != nil {
+			graphviz.MarkNode(n)
+			fmt.Fprint(os.Stdout, "\n\n")
+			graphviz.Render(t, *label, os.Stdout)
+			graphviz.UnmarkNode(n)
 			for i := 0; i < *siftN; i++ {
 				n = radix.SiftUp(n)
-				fmt.Fprint(os.Stdout, "\n")
-				radix.Graphviz(os.Stdout, *label, t)
+				fmt.Fprint(os.Stdout, "\n\n")
+				graphviz.Render(t, *label, os.Stdout)
 			}
 		}
 	}
@@ -98,8 +103,7 @@ func main() {
 		}
 		if t.Delete(path, val) {
 			fmt.Fprint(os.Stdout, "\n")
-			radix.Graphviz(os.Stdout, *label, t)
+			graphviz.Render(t, *label, os.Stdout)
 		}
 	}
-
 }
