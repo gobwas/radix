@@ -41,7 +41,7 @@ func TestTrieInsert(t *testing.T) {
 	} {
 		trie := New()
 		for _, v := range test.values {
-			trie.Insert(PathFromSlice(test.insert...), v)
+			trie.Insert(PathFromSlice(test.insert), v)
 		}
 		var data []int
 		trie.ForEach(func(p Path, v int) bool {
@@ -87,12 +87,12 @@ func TestTrieInsertLookup(t *testing.T) {
 	} {
 		trie := New()
 		for _, op := range test.insert {
-			trie.Insert(PathFromSlice(op.p...), op.v)
+			trie.Insert(PathFromSlice(op.p), op.v)
 		}
 
 		for _, p := range test.lookup {
 			var result []int
-			trie.Lookup(PathFromSlice(p...), func(v int) bool {
+			trie.Lookup(PathFromSlice(p), func(v int) bool {
 				result = append(result, v)
 				return true
 			})
@@ -138,10 +138,10 @@ func TestTrieInsertDelete(t *testing.T) {
 	} {
 		trie := New()
 		for _, op := range test.insert {
-			trie.Insert(PathFromSlice(op.p...), op.v)
+			trie.Insert(PathFromSlice(op.p), op.v)
 		}
 		for _, del := range test.delete {
-			if del.ok != trie.Delete(PathFromSlice(del.p...), del.v) {
+			if del.ok != trie.Delete(PathFromSlice(del.p), del.v) {
 				t.Errorf("[%d] Delete(%v, %v) = %v; want %v", i, del.p, del.v, !del.ok, del.ok)
 			}
 		}
@@ -226,13 +226,13 @@ func benchmarkInsert(b *testing.B, exists int) {
 	t := New()
 	values := randStr(exists + 1)
 	for i := 0; i < exists; i++ {
-		t.Insert(PathFromSlice(Pair{1, values[i]}), i)
+		t.Insert(PathFromSlice([]Pair{{1, values[i]}}), i)
 	}
 	insert := values[len(values)-1]
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		for j := 0; j < len(insert); j++ {
-			t.Insert(PathFromSlice(Pair{1, insert}), exists)
+			t.Insert(PathFromSlice([]Pair{{1, insert}}), exists)
 		}
 	}
 }
@@ -249,7 +249,7 @@ func fill(t *Trie, path []Pair, d, n, v int, values []string, ret *[]item_p, k *
 	for i := 0; i < n; i++ {
 		for j := 0; j < v; j++ {
 			np := append(path, Pair{uint(m + i), values[*k]})
-			ps := PathFromSlice(np...)
+			ps := PathFromSlice(np)
 			t.Insert(ps, *val)
 			if d == 1 {
 				*ret = append(*ret, item_p{ps, *val})

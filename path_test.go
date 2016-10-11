@@ -27,7 +27,7 @@ func benchmarkPathFromSlice(b *testing.B, size int) {
 	}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = PathFromSlice(data...)
+		_ = PathFromSlice(data)
 	}
 }
 
@@ -38,7 +38,7 @@ func benchmarkPathWithout(b *testing.B, size int) {
 	for i, key := range rid {
 		data[i] = Pair{uint(key), s[i]}
 	}
-	path := PathFromSlice(data...)
+	path := PathFromSlice(data)
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		_ = path.Without(uint(rid[i%size]))

@@ -10,9 +10,7 @@ bin/viz:
 clean:
 	for file in $(GENERATED); do [ -f $$file ] && rm $$file; done
 
-test: graphviz _test clean
-
-_test:
+test:
 	go test -v
 
 bench: 

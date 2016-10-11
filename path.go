@@ -7,6 +7,26 @@ type Pair struct {
 	Value string
 }
 
+type PathBuilder struct {
+	size  int
+	pairs []Pair
+}
+
+func NewPathBuilder(n int) *PathBuilder {
+	return &PathBuilder{
+		pairs: make([]Pair, n),
+	}
+}
+
+func (p *PathBuilder) Add(k uint, v string) {
+	p.pairs[p.size] = Pair{k, v}
+	p.size++
+}
+
+func (p *PathBuilder) Build() Path {
+	return PathFromSlice(p.pairs)
+}
+
 type PathCursor int
 
 type Path struct {
@@ -15,7 +35,7 @@ type Path struct {
 	excluded uint32
 }
 
-func PathFromSlice(data ...Pair) (ret Path) {
+func PathFromSlice(data []Pair) (ret Path) {
 	// TODO(s.kamardin) what if len(data)>32?
 	// TODO(s.kamardin) check for duplicates
 	ret.pairs = make([]Pair, len(data))
@@ -73,9 +93,6 @@ func (p Path) Last() (Pair, PathCursor, bool) {
 	return Pair{}, PathCursor(-1), false
 }
 
-func (p Path) Begin() PathCursor { return PathCursor(0) }
-func (p Path) End() PathCursor   { return PathCursor(len(p.pairs)) }
-
 func (p Path) Ascend(cur PathCursor, cb func(Pair) bool) {
 	for i := int(cur); i < len(p.pairs); i++ {
 		if p.includes(i) && !cb(p.pairs[i]) {
@@ -90,6 +107,14 @@ func (p Path) Descend(cur PathCursor, cb func(Pair) bool) {
 			return
 		}
 	}
+}
+
+func (p Path) Begin() PathCursor {
+	return PathCursor(0)
+}
+
+func (p Path) End() PathCursor {
+	return PathCursor(len(p.pairs))
 }
 
 func (p Path) AscendRange(a, b uint, cb func(Pair) bool) {
