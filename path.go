@@ -12,6 +12,7 @@ type PathBuilder struct {
 	pairs []Pair
 }
 
+// NewPathBuilder creates PathBuilder with n capacity of pairs.
 func NewPathBuilder(n int) *PathBuilder {
 	return &PathBuilder{
 		pairs: make([]Pair, n),
@@ -23,12 +24,9 @@ func (p *PathBuilder) Add(k uint, v string) {
 	p.size++
 }
 
-func (p *PathBuilder) Build() (ret Path, err error) {
-	ret = PathFromSlice(p.pairs)
-	if p.size != len(p.pairs) {
-		err = fmt.Errorf("requested builder to store %d pairs, but set only %d", len(p.pairs), p.size)
-	}
-	return
+func (p *PathBuilder) Build() (ret Path) {
+	p.pairs = p.pairs[:p.size]
+	return PathFromSlice(p.pairs)
 }
 
 type PathCursor int
