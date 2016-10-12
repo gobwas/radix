@@ -43,10 +43,12 @@ func (t *Trie) Lookup(path Path, it Iterator) {
 	})
 }
 
-func (t *Trie) ForEach(it func(Path, int) bool) {
-	dig(t.root, Path{}, func(path Path, lf *Leaf) bool {
-		return lf.Ascend(func(v int) bool {
-			return it(path, v)
+func (t *Trie) ForEach(path Path, it func(Path, int) bool) {
+	leafLookup(t.root, path, lookupStrict, func(l *Leaf) bool {
+		return dig(t.root, path, func(path Path, lf *Leaf) bool {
+			return lf.Ascend(func(v int) bool {
+				return it(path, v)
+			})
 		})
 	})
 }

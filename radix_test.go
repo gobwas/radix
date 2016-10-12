@@ -44,7 +44,7 @@ func TestTrieInsert(t *testing.T) {
 			trie.Insert(PathFromSlice(test.insert), v)
 		}
 		var data []int
-		trie.ForEach(func(p Path, v int) bool {
+		trie.ForEach(Path{}, func(p Path, v int) bool {
 			data = append(data, v)
 			return true
 		})
@@ -146,7 +146,7 @@ func TestTrieInsertDelete(t *testing.T) {
 			}
 		}
 		var result []int
-		trie.ForEach(func(p Path, v int) bool {
+		trie.ForEach(Path{}, func(p Path, v int) bool {
 			result = append(result, v)
 			return true
 		})
