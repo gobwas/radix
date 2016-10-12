@@ -19,8 +19,10 @@ func UnmarkNode(n *radix.Node) {
 	delete(markup, n)
 }
 
+var i *uint32 = new(uint32)
+
 func Render(t *radix.Trie, label string, w io.Writer) {
-	fmt.Fprintf(w, `digraph G {graph[label="%s"]; node[style=filled];`, label)
+	fmt.Fprintf(w, `digraph Trie%d {graph[label="%s"]; node[style=filled];`, atomic.AddUint32(i, 1), label)
 	v := &visitor{
 		w:  w,
 		id: newID(),
