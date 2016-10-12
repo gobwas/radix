@@ -119,6 +119,8 @@ func LeafInsert(l *Leaf, path Path, value int, cb nodeIndexer) {
 		var has bool
 		min, max := path.Min(), path.Max()
 		// TODO(s.kamardin): use heap sort here to detect max miss factored node.
+		// TODO(s.kamardin): when n.key is not in path, maybe get next element in Path
+		//                   and seek children to ascend after the index of next pair
 		l.AscendChildrenRange(min.Key, max.Key, func(n *Node) bool {
 			if v, ok := path.Get(n.key); ok {
 				l = n.GetsertLeaf(v)
