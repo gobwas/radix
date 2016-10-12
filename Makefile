@@ -3,12 +3,14 @@ GTFLAGS  ?=
 
 TEMPLATES = $(wildcard $(PWD)/*.go.h)
 GENERATED = $(wildcard $(PWD)/*_gen.go)
+GRAPHICS = $(wildcard $(PWD)/*.png)
 
 bin/viz: 
 	go build -o bin/viz ./tools/viz/...
 
 clean:
 	for file in $(GENERATED); do [ -f $$file ] && rm $$file; done
+	for file in $(GRAPHICS); do [ -f $$file ] && rm $$file; done
 
 test:
 	go test -v
