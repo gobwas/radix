@@ -1,6 +1,6 @@
 package radix
 
-type Iterator func(int) bool
+type Iterator func(uint) bool
 type leafIterator func(*Leaf) bool
 
 type Trie struct {
@@ -15,7 +15,7 @@ func New() *Trie {
 	}
 }
 
-func (t *Trie) Insert(p Path, v int) {
+func (t *Trie) Insert(p Path, v uint) {
 	if p.Len() == 0 {
 		t.root.Append(v)
 		return
@@ -23,7 +23,7 @@ func (t *Trie) Insert(p Path, v int) {
 	LeafInsert(t.root, p, v, t.indexNode)
 }
 
-func (t *Trie) Delete(path Path, v int) (ok bool) {
+func (t *Trie) Delete(path Path, v uint) (ok bool) {
 	leafLookup(t.root, path, lookupStrict, func(l *Leaf) bool {
 		// TODO(s.kamardin) cleanup empty leafs Without nodes
 		if l.Remove(v) {
@@ -43,10 +43,10 @@ func (t *Trie) Lookup(path Path, it Iterator) {
 	})
 }
 
-func (t *Trie) ForEach(path Path, it func(Path, int) bool) {
+func (t *Trie) ForEach(path Path, it func(Path, uint) bool) {
 	leafLookup(t.root, path, lookupStrict, func(l *Leaf) bool {
 		return dig(t.root, path, func(path Path, lf *Leaf) bool {
-			return lf.Ascend(func(v int) bool {
+			return lf.Ascend(func(v uint) bool {
 				return it(path, v)
 			})
 		})
@@ -243,7 +243,7 @@ func compress(n *Node) {
 	}
 }
 
-func makeTree(p Path, v int, cb nodeIndexer) *Node {
+func makeTree(p Path, v uint, cb nodeIndexer) *Node {
 	last, cur, ok := p.Last()
 	if !ok {
 		panic("could not make tree with empty path")

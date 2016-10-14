@@ -125,7 +125,7 @@ func nodeSize(n *radix.Node) (s uintptr) {
 	return
 }
 
-func graphvizData(w io.Writer, data []int, id *id) int64 {
+func graphvizData(w io.Writer, data []uint, id *id) int64 {
 	var str string
 	for _, v := range data {
 		str += fmt.Sprintf("%v;", v)

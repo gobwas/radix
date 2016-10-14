@@ -2,7 +2,7 @@ BENCH    ?= .
 GTFLAGS  ?=
 
 TEMPLATES = $(wildcard $(PWD)/*.go.h)
-GENERATED = $(wildcard $(PWD)/*_gen.go)
+GENERATED = $(wildcard $(PWD)/*_gen.go $(PWD)/*_gen_test.go)
 GRAPHICS = $(wildcard $(PWD)/*.png)
 
 bin/viz: 
@@ -23,6 +23,10 @@ generate:
 		name=`basename $$tmpl .h`; \
 		base=`basename $$name .go` \
 		output="$${base}_gen.go"; \
+		if [[ "$$base" =~ "_test" ]]; then \
+			base=`basename $$base _test`; \
+			output="$${base}_gen_test.go"; \
+		fi; \
 		tmp="$${output}.tmp"; \
 	   	cc -Iinclude -DGRAPHVIZ=$(GRAPHVIZ) -E -P $$tmpl \
 			| sed -E -e 's/>>>/\/\//g' \

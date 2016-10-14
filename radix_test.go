@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
-	"sort"
 	"testing"
 
 	. "github.com/gobwas/radix"
@@ -16,12 +15,12 @@ type pairs []Pair
 
 type item struct {
 	p pairs
-	v int
+	v uint
 }
 
 type item_p struct {
 	p Path
-	v int
+	v uint
 }
 
 type del struct {
@@ -32,19 +31,19 @@ type del struct {
 func TestTrieInsert(t *testing.T) {
 	for i, test := range []struct {
 		insert pairs
-		values []int
+		values []uint
 	}{
 		{
 			insert: pairs{{1, "a"}, {2, "b"}},
-			values: []int{1, 2, 3, 4},
+			values: []uint{1, 2, 3, 4},
 		},
 	} {
 		trie := New()
 		for _, v := range test.values {
 			trie.Insert(PathFromSlice(test.insert), v)
 		}
-		var data []int
-		trie.ForEach(Path{}, func(p Path, v int) bool {
+		var data []uint
+		trie.ForEach(Path{}, func(p Path, v uint) bool {
 			data = append(data, v)
 			return true
 		})
@@ -58,7 +57,7 @@ func TestTrieInsertLookup(t *testing.T) {
 	for i, test := range []struct {
 		insert []item
 		lookup []pairs
-		expect []int
+		expect []uint
 	}{
 		{
 			insert: []item{
@@ -68,7 +67,7 @@ func TestTrieInsertLookup(t *testing.T) {
 				pairs{{1, "a"}, {2, "b"}},
 				pairs{{2, "b"}, {1, "a"}},
 			},
-			expect: []int{1},
+			expect: []uint{1},
 		},
 		{
 			insert: []item{
@@ -82,7 +81,7 @@ func TestTrieInsertLookup(t *testing.T) {
 				pairs{{1, "a"}, {2, "b"}},
 				pairs{{2, "b"}, {1, "a"}},
 			},
-			expect: []int{1, 2, 3, 4, 5},
+			expect: []uint{1, 2, 3, 4, 5},
 		},
 	} {
 		trie := New()
@@ -91,8 +90,8 @@ func TestTrieInsertLookup(t *testing.T) {
 		}
 
 		for _, p := range test.lookup {
-			var result []int
-			trie.Lookup(PathFromSlice(p), func(v int) bool {
+			var result []uint
+			trie.Lookup(PathFromSlice(p), func(v uint) bool {
 				result = append(result, v)
 				return true
 			})
@@ -109,7 +108,7 @@ func TestTrieInsertDelete(t *testing.T) {
 	for i, test := range []struct {
 		insert []item
 		delete []del
-		expect []int
+		expect []uint
 	}{
 		{
 			insert: []item{
@@ -118,7 +117,7 @@ func TestTrieInsertDelete(t *testing.T) {
 			delete: []del{
 				{item{pairs{{1, "a"}, {2, "b"}}, 1}, true},
 			},
-			expect: []int{},
+			expect: []uint{},
 		},
 		{
 			insert: []item{
@@ -133,7 +132,7 @@ func TestTrieInsertDelete(t *testing.T) {
 				{item{pairs{{1, "a"}}, 3}, true},
 				{item{pairs{{1, "a"}}, 4}, false},
 			},
-			expect: []int{2, 4, 5},
+			expect: []uint{2, 4, 5},
 		},
 	} {
 		trie := New()
@@ -145,8 +144,8 @@ func TestTrieInsertDelete(t *testing.T) {
 				t.Errorf("[%d] Delete(%v, %v) = %v; want %v", i, del.p, del.v, !del.ok, del.ok)
 			}
 		}
-		var result []int
-		trie.ForEach(Path{}, func(p Path, v int) bool {
+		var result []uint
+		trie.ForEach(Path{}, func(p Path, v uint) bool {
 			result = append(result, v)
 			return true
 		})
@@ -161,12 +160,12 @@ func TestTrieInsertDelete(t *testing.T) {
 	}
 }
 
-func listEq(a, b []int) bool {
+func listEq(a, b []uint) bool {
 	if len(a) != len(b) {
 		return false
 	}
-	sort.Ints(a)
-	sort.Ints(b)
+	uintSort(a, 0, len(a))
+	uintSort(b, 0, len(a))
 	for i, av := range a {
 		if b[i] != av {
 			return false
@@ -226,13 +225,13 @@ func benchmarkInsert(b *testing.B, exists int) {
 	t := New()
 	values := randStr(exists + 1)
 	for i := 0; i < exists; i++ {
-		t.Insert(PathFromSlice([]Pair{{1, values[i]}}), i)
+		t.Insert(PathFromSlice([]Pair{{1, values[i]}}), uint(i))
 	}
 	insert := values[len(values)-1]
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		for j := 0; j < len(insert); j++ {
-			t.Insert(PathFromSlice([]Pair{{1, insert}}), exists)
+			t.Insert(PathFromSlice([]Pair{{1, insert}}), uint(exists))
 		}
 	}
 }
@@ -242,7 +241,7 @@ func BenchmarkTrieInsert_1000(b *testing.B)    { benchmarkInsert(b, 1000) }
 func BenchmarkTrieInsert_100000(b *testing.B)  { benchmarkInsert(b, 100000) }
 func BenchmarkTrieInsert_1000000(b *testing.B) { benchmarkInsert(b, 1000000) }
 
-func fill(t *Trie, path []Pair, d, n, v int, values []string, ret *[]item_p, k *int, m int, val *int) {
+func fill(t *Trie, path []Pair, d, n, v int, values []string, ret *[]item_p, k *int, m int, val *uint) {
 	if d == 0 {
 		return
 	}
@@ -274,7 +273,7 @@ func genTrie(d, n, v int) (*Trie, []item_p) {
 	values := randStr(leafs)
 	t := New()
 	r := make([]item_p, 0)
-	fill(t, nil, d, n, v, values, &r, new(int), 1, new(int))
+	fill(t, nil, d, n, v, values, &r, new(int), 1, new(uint))
 	return t, r
 }
 
@@ -292,7 +291,7 @@ func benchmarkLookup(b *testing.B, d, n, v int) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		item := deepest[i%len(deepest)]
-		trie.Lookup(item.p, func(v int) bool { return true })
+		trie.Lookup(item.p, func(v uint) bool { return true })
 	}
 }
 

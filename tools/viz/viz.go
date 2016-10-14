@@ -40,17 +40,17 @@ func scanPath(r io.Reader) (path radix.Path, number string, err error) {
 	return
 }
 
-func scanPathVal(r io.Reader) (path radix.Path, val int, err error) {
+func scanPathVal(r io.Reader) (path radix.Path, val uint, err error) {
 	var rem string
 	path, rem, err = scanPath(r)
 	if err != nil {
 		return
 	}
-	v, err := strconv.ParseInt(rem, 10, 64)
+	v, err := strconv.ParseUint(rem, 10, 64)
 	if err != nil {
 		return
 	}
-	val = int(v)
+	val = uint(v)
 	return
 }
 

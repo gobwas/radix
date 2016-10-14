@@ -61,14 +61,14 @@ func (l *Leaf) AscendChildrenRange(a, b uint, cb func(*Node) bool) (ok bool) {
 	return l.children.AscendRange(a, b, cb)
 }
 
-func (l *Leaf) Data() []int {
+func (l *Leaf) Data() []uint {
 	l.dmu.RLock()
 	defer l.dmu.RUnlock()
 
-	ret := make([]int, l.data.Len())
+	ret := make([]uint, l.data.Len())
 	var i int
 	l.data.Ascend(func(x btree.Item) bool {
-		ret[i] = int(x.(btree.Int))
+		ret[i] = uint(x.(btreeUint))
 		i++
 		return true
 	})
@@ -85,16 +85,16 @@ func (l *Leaf) Empty() bool {
 	return dl == 0
 }
 
-func (l *Leaf) Append(v int) {
+func (l *Leaf) Append(v uint) {
 	l.dmu.Lock()
-	l.data.ReplaceOrInsert(btree.Int(v))
+	l.data.ReplaceOrInsert(btreeUint(v))
 	l.dmu.Unlock()
 }
 
 // todo use store
-func (l *Leaf) Remove(v int) (ok bool) {
+func (l *Leaf) Remove(v uint) (ok bool) {
 	l.dmu.Lock()
-	ok = l.data.Delete(btree.Int(v)) != nil
+	ok = l.data.Delete(btreeUint(v)) != nil
 	l.dmu.Unlock()
 	return
 }
@@ -103,14 +103,14 @@ func (l *Leaf) Ascend(it Iterator) (ok bool) {
 	ok = true
 	l.dmu.RLock()
 	l.data.Ascend(func(i btree.Item) bool {
-		ok = it(int(i.(btree.Int)))
+		ok = it(uint(i.(btreeUint)))
 		return ok
 	})
 	l.dmu.RUnlock()
 	return
 }
 
-func LeafInsert(l *Leaf, path Path, value int, cb nodeIndexer) {
+func LeafInsert(l *Leaf, path Path, value uint, cb nodeIndexer) {
 	for {
 		if path.Len() == 0 {
 			l.Append(value)
@@ -135,4 +135,11 @@ func LeafInsert(l *Leaf, path Path, value int, cb nodeIndexer) {
 			return
 		}
 	}
+}
+
+// Int implements the Item interface for integers.
+type btreeUint uint
+
+func (a btreeUint) Less(b btree.Item) bool {
+	return a < b.(btreeUint)
 }
