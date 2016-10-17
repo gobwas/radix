@@ -26,7 +26,7 @@ func (p *PathBuilder) Add(k uint, v string) {
 
 func (p *PathBuilder) Build() (ret Path) {
 	p.pairs = p.pairs[:p.size]
-	return PathFromSlice(p.pairs)
+	return PathFromSliceBorrow(p.pairs)
 }
 
 type PathCursor int
@@ -37,14 +37,19 @@ type Path struct {
 	excluded uint32
 }
 
-func PathFromSlice(data []Pair) (ret Path) {
-	// TODO(s.kamardin) what if len(data)>32?
-	// TODO(s.kamardin) check for duplicates
-	ret.pairs = make([]Pair, len(data))
-	copy(ret.pairs, data)
+func PathFromSliceBorrow(data []Pair) (ret Path) {
+	ret.pairs = data
 	ret.len = len(data)
 	pairSort(ret.pairs, 0, len(ret.pairs))
 	return
+}
+
+func PathFromSlice(data []Pair) (ret Path) {
+	// TODO(s.kamardin) what if len(data)>32?
+	// TODO(s.kamardin) check for duplicates
+	pairs := make([]Pair, len(data))
+	copy(pairs, data)
+	return PathFromSliceBorrow(pairs)
 }
 
 func PathFromMap(m map[uint]string) (ret Path) {
