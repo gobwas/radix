@@ -1,5 +1,7 @@
 package radix
 
+//go:generate ppgo
+
 import "fmt"
 
 type Pair struct {

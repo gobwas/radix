@@ -1,5 +1,7 @@
 package radix_test
 
+//go:generate ppgo
+
 import (
 	"bytes"
 	"fmt"

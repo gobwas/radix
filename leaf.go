@@ -15,13 +15,14 @@ type Leaf struct {
 	dmu  sync.RWMutex
 	data *btree.BTree
 
-	children nodeArray
+	children *nodeArray
 }
 
 func newLeaf(parent *Node) *Leaf {
 	return &Leaf{
-		data:   btree.New(degree),
-		parent: parent,
+		data:     btree.New(degree),
+		children: newNodeArray(),
+		parent:   parent,
 	}
 }
 
@@ -42,7 +43,8 @@ func (l *Leaf) AddChild(n *Node) {
 }
 
 func (l *Leaf) GetChild(key uint) *Node {
-	return l.children.Get(key)
+	n, _ := l.children.Get(key)
+	return n
 }
 
 func (l *Leaf) GetsertChild(key uint) *Node {
@@ -50,7 +52,8 @@ func (l *Leaf) GetsertChild(key uint) *Node {
 }
 
 func (l *Leaf) RemoveChild(key uint) *Node {
-	return l.children.Delete(key)
+	prev, _ := l.children.Delete(key)
+	return prev
 }
 
 func (l *Leaf) AscendChildren(cb func(*Node) bool) (ok bool) {

@@ -225,7 +225,7 @@ func SiftUp(n *Node) *Node {
 					})
 					// cleanup
 					lf.data = nil
-					lf.children = nodeArray{}
+					lf.children = nil
 					lf.parent = nil
 				}
 			}
