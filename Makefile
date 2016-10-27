@@ -19,22 +19,7 @@ bench:
 	go test -run=none -bench=$(BENCH) -benchmem $(GTFLAGS)
 
 generate:
-	for tmpl in $(TEMPLATES); do \
-		name=`basename $$tmpl .h`; \
-		base=`basename $$name .go` \
-		output="$${base}_gen.go"; \
-		if [[ "$$base" =~ "_test" ]]; then \
-			base=`basename $$base _test`; \
-			output="$${base}_gen_test.go"; \
-		fi; \
-		tmp="$${output}.tmp"; \
-	   	cc -Iinclude -DGRAPHVIZ=$(GRAPHVIZ) -E -P $$tmpl \
-			| sed -E -e 's/>>>/\/\//g' \
-			| sed -e $$'s/;;/\\\n/g' \
-		   	> $$tmp; \
-		gofmt $$tmp > $$output; \
-		rm -f $$tmp; \
-	done;
+	go generate ./...
 
 .IGNORE: _test _bench _viz 
 .PHONY: generate enable_graphviz disable_graphviz
