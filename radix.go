@@ -5,13 +5,13 @@ type leafIterator func(*Leaf) bool
 
 type Trie struct {
 	root *Leaf
-	heap *Heap
+	//heap *Heap
 }
 
 func New() *Trie {
 	return &Trie{
 		root: newLeaf(nil),
-		heap: NewHeap(2, 0),
+		//heap: NewHeap(2, 0),
 	}
 }
 
@@ -137,7 +137,8 @@ func SearchNode(t *Trie, path Path) *Node {
 }
 
 func (t *Trie) indexNode(n *Node) {
-	t.heap.Insert(n)
+	//TODO(s.kamardin): use heap from ppgo here and sift up less hit nodes up
+	//t.heap.Insert(n)
 }
 
 type nodeIndexer func(n *Node)
