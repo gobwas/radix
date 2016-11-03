@@ -28,7 +28,7 @@ func pairQuickSort(data []Pair, lo, hi int) {
 func pairInsertionSort(data []Pair, l, r int) {
 	// Insertion sort algorithm.
 	for i := l + 1; i < r; i++ {
-		for j := i; j > l && data[j-1].Key > data[j].Key; j-- {
+		for j := i; j > l && !(data[j-1].Key <= data[j].Key); j-- {
 			data[j], data[j-1] = data[j-1], data[j]
 		}
 	}
@@ -41,7 +41,7 @@ func pairSort(data []Pair, l, r int) {
 	}
 	// Insertion sort algorithm.
 	for i := l + 1; i < r; i++ {
-		for j := i; j > l && data[j-1].Key > data[j].Key; j-- {
+		for j := i; j > l && !(data[j-1].Key <= data[j].Key); j-- {
 			data[j], data[j-1] = data[j-1], data[j]
 		}
 	}

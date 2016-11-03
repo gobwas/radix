@@ -28,7 +28,7 @@ func uintQuickSort(data []uint, lo, hi int) {
 func uintInsertionSort(data []uint, l, r int) {
 	// Insertion sort algorithm.
 	for i := l + 1; i < r; i++ {
-		for j := i; j > l && data[j-1] > data[j]; j-- {
+		for j := i; j > l && !(data[j-1] <= data[j]); j-- {
 			data[j], data[j-1] = data[j-1], data[j]
 		}
 	}
@@ -41,7 +41,7 @@ func uintSort(data []uint, l, r int) {
 	}
 	// Insertion sort algorithm.
 	for i := l + 1; i < r; i++ {
-		for j := i; j > l && data[j-1] > data[j]; j-- {
+		for j := i; j > l && !(data[j-1] <= data[j]); j-- {
 			data[j], data[j-1] = data[j-1], data[j]
 		}
 	}

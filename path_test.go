@@ -1,11 +1,51 @@
 package radix_test
 
 import (
+	"fmt"
 	"math/rand"
 	"testing"
 
 	. "github.com/gobwas/radix"
 )
+
+func TestPathFirst(t *testing.T) {
+	for i, test := range []struct {
+		data  []Pair
+		first Pair
+		last  Pair
+	}{
+		{
+			data: []Pair{
+				{3, "d"},
+				{1, "b"},
+				{2, "c"},
+				{0, "a"},
+			},
+			first: Pair{0, "a"},
+			last:  Pair{3, "d"},
+		},
+	} {
+		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
+			p := PathFromSliceBorrow(test.data)
+
+			f, _, ok := p.First()
+			if !ok {
+				t.Errorf("expected First() to return true, but got false")
+			}
+			if f != test.first {
+				t.Errorf("First() = %v; want %v", f, test.first)
+			}
+
+			l, _, ok := p.Last()
+			if !ok {
+				t.Errorf("expected Last() to return true, but got false")
+			}
+			if l != test.last {
+				t.Errorf("Last() = %v; want %v", l, test.first)
+			}
+		})
+	}
+}
 
 func benchmarkPathFromMap(b *testing.B, size int) {
 	m := make(map[uint]string, size)

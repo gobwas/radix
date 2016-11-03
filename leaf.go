@@ -48,7 +48,7 @@ func (l *Leaf) GetChild(key uint) *Node {
 }
 
 func (l *Leaf) GetsertChild(key uint) *Node {
-	return l.children.Getsert(&Node{key: key})
+	return l.children.GetsertFn(key, func() *Node { return &Node{key: key} })
 }
 
 func (l *Leaf) RemoveChild(key uint) *Node {
@@ -62,6 +62,14 @@ func (l *Leaf) AscendChildren(cb func(*Node) bool) (ok bool) {
 
 func (l *Leaf) AscendChildrenRange(a, b uint, cb func(*Node) bool) (ok bool) {
 	return l.children.AscendRange(a, b, cb)
+}
+
+func (l *Leaf) GetAny(it func() (uint, bool)) (*Node, bool) {
+	return l.children.GetAny(it)
+}
+
+func (l *Leaf) GetsertAny(it func() (uint, bool), add func() *Node) *Node {
+	return l.children.GetsertAnyFn(it, add)
 }
 
 func (l *Leaf) Data() []uint {
@@ -119,24 +127,32 @@ func LeafInsert(l *Leaf, path Path, value uint, cb nodeIndexer) {
 			l.Append(value)
 			return
 		}
-		var has bool
-		min, max := path.Min(), path.Max()
 		// TODO(s.kamardin): use heap sort here to detect max miss factored node.
 		// TODO(s.kamardin): when n.key is not in path, maybe get next element in Path
 		//                   and seek children to ascend after the index of next pair
-		l.AscendChildrenRange(min.Key, max.Key, func(n *Node) bool {
-			if v, ok := path.Get(n.key); ok {
-				l = n.GetsertLeaf(v)
-				path = path.Without(n.key)
-				has = true
-				return false
+
+		// First try to find an existance of any path key in leaf children.
+		// Due to the trie usage pattern, it is probably exists already.
+		// If we do just lookup, leaf will not be locked for other goroutine lookups.
+		// When we decided to insert new node to the leaf, we do the same thing, except
+		// the locking leaf for lookups and other writes.
+		n, ok := l.GetAny(path.AscendKeyIterator())
+		if !ok {
+			var insert bool
+			n = l.GetsertAny(path.AscendKeyIterator(), func() *Node {
+				insert = true
+				return makeTree(path, value, cb)
+			})
+			if insert {
+				return
 			}
-			return true
-		})
-		if !has {
-			l.AddChild(makeTree(path, value, cb))
-			return
 		}
+		v, ok := path.Get(n.key)
+		if !ok {
+			panic("inconsistent path state")
+		}
+		l = n.GetsertLeaf(v)
+		path = path.Without(n.key)
 	}
 }
 

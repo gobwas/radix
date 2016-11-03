@@ -84,22 +84,48 @@ func (p Path) Get(k uint) (string, bool) {
 	return p.pairs[i].Value, true
 }
 
-func (p Path) First() (Pair, PathCursor, bool) {
-	for i := 0; i < len(p.pairs); i++ {
+func (p Path) First() (Pair, PathCursor, bool) { return p.Next(p.Begin()) }
+func (p Path) Last() (Pair, PathCursor, bool)  { return p.Prev(p.End()) }
+
+func (p Path) Next(cur PathCursor) (Pair, PathCursor, bool) {
+	for i := int(cur); i < len(p.pairs); i++ {
 		if p.includes(i) {
-			return p.pairs[i], PathCursor(i), true
+			return p.pairs[i], PathCursor(i + 1), true
 		}
 	}
 	return Pair{}, PathCursor(-1), false
 }
 
-func (p Path) Last() (Pair, PathCursor, bool) {
-	for i := len(p.pairs) - 1; i >= 0; i-- {
+func (p Path) Prev(cur PathCursor) (Pair, PathCursor, bool) {
+	for i := int(cur); i >= 0; i-- {
 		if p.includes(i) {
-			return p.pairs[i], PathCursor(i), true
+			return p.pairs[i], PathCursor(i - 1), true
 		}
 	}
 	return Pair{}, PathCursor(-1), false
+}
+
+func (p Path) AscendIterator() func() (Pair, bool) {
+	cur := p.Begin()
+	var pr Pair
+	var ok bool
+	return func() (Pair, bool) {
+		pr, cur, ok = p.Next(cur)
+		return pr, ok
+	}
+}
+
+func (p Path) AscendKeyIterator() func() (uint, bool) {
+	cur := p.Begin()
+	var pr Pair
+	var ok bool
+	return func() (uint, bool) {
+		pr, cur, ok = p.Next(cur)
+		if !ok {
+			return 0, false
+		}
+		return pr.Key, true
+	}
 }
 
 func (p Path) Ascend(cur PathCursor, cb func(Pair) bool) {
@@ -111,7 +137,7 @@ func (p Path) Ascend(cur PathCursor, cb func(Pair) bool) {
 }
 
 func (p Path) Descend(cur PathCursor, cb func(Pair) bool) {
-	for i := int(cur) - 1; i >= 0; i-- {
+	for i := int(cur); i >= 0; i-- {
 		if p.includes(i) && !cb(p.pairs[i]) {
 			return
 		}
@@ -123,7 +149,7 @@ func (p Path) Begin() PathCursor {
 }
 
 func (p Path) End() PathCursor {
-	return PathCursor(len(p.pairs))
+	return PathCursor(len(p.pairs) - 1)
 }
 
 func (p Path) AscendRange(a, b uint, cb func(Pair) bool) {

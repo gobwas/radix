@@ -13,7 +13,7 @@ clean:
 	for file in $(GRAPHICS); do [ -f $$file ] && rm $$file; done
 
 test:
-	go test -v
+	go test -v -cover
 
 bench: 
 	go test -run=none -bench=$(BENCH) -benchmem $(GTFLAGS)

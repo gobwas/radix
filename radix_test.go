@@ -91,6 +91,9 @@ func TestTrieInsertLookup(t *testing.T) {
 			trie.Insert(PathFromSlice(op.p), op.v)
 		}
 
+		before := &bytes.Buffer{}
+		graphviz.Render(trie, fmt.Sprintf("test-%d-before", i), before)
+
 		for _, p := range test.lookup {
 			var result []uint
 			trie.Lookup(PathFromSlice(p), func(v uint) bool {
@@ -99,8 +102,11 @@ func TestTrieInsertLookup(t *testing.T) {
 			})
 			if !listEq(result, test.expect) {
 				buf := &bytes.Buffer{}
-				graphviz.Render(trie, fmt.Sprintf("test-%d", i), buf)
-				t.Errorf("[%d] Lookup(%v) = %v; want %v\nTrie graphviz:\n%s\n", i, p, result, test.expect, buf.String())
+				graphviz.Render(trie, fmt.Sprintf("test-%d-after", i), buf)
+				t.Errorf(
+					"[%d] Lookup(%v) = %v; want %v\nTrie graphviz before:\n%s\nTrie graphviz after:\n%s\n",
+					i, p, result, test.expect, before.String(), buf.String(),
+				)
 			}
 		}
 	}
@@ -141,6 +147,10 @@ func TestTrieInsertDelete(t *testing.T) {
 		for _, op := range test.insert {
 			trie.Insert(PathFromSlice(op.p), op.v)
 		}
+
+		before := &bytes.Buffer{}
+		graphviz.Render(trie, fmt.Sprintf("test-%d-before", i), before)
+
 		for _, del := range test.delete {
 			if del.ok != trie.Delete(PathFromSlice(del.p), del.v) {
 				t.Errorf("[%d] Delete(%v, %v) = %v; want %v", i, del.p, del.v, !del.ok, del.ok)
@@ -155,8 +165,8 @@ func TestTrieInsertDelete(t *testing.T) {
 			buf := &bytes.Buffer{}
 			graphviz.Render(trie, fmt.Sprintf("test-%d", i), buf)
 			t.Errorf(
-				"[%d] after Delete; Lookup(%v) = %v; want %v\nTrie graphviz:\n%s\n",
-				i, pairs{}, result, test.expect, buf.String(),
+				"[%d] after Delete; Lookup(%v) = %v; want %v\nTrie graphviz before:\n%s\nTrie graphviz after:\n%s\n",
+				i, pairs{}, result, test.expect, before.String(), buf.String(),
 			)
 		}
 	}
