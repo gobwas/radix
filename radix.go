@@ -218,14 +218,14 @@ func SiftUp(n *Node) *Node {
 					nlf := nn.GetsertLeaf(v)
 					chn := nlf.GetsertChild(pNode.key)
 					chlf := chn.GetsertLeaf(val)
-					chlf.data = lf.data
+					chlf.btree = lf.btree
 					chlf.children = lf.children
 					chlf.AscendChildren(func(c *Node) bool {
 						c.parent = chlf
 						return true
 					})
 					// cleanup
-					lf.data = nil
+					lf.btree = nil
 					lf.children = nil
 					lf.parent = nil
 				}

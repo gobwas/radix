@@ -1,5 +1,7 @@
 package radix
 
+//go:generate ppgo
+
 import (
 	"fmt"
 	"sync"
@@ -7,22 +9,29 @@ import (
 	"github.com/google/btree"
 )
 
-const degree = 128
+const (
+	arrayLimit = 12
+	degree     = 128
+)
 
 type Leaf struct {
 	parent *Node
 
-	dmu  sync.RWMutex
-	data *btree.BTree
+	// dmu holds mutex for data manipulation.
+	dmu sync.RWMutex
+	// If leaf data is at most arrayLimit, uint sorted array is used.
+	// Otherwise BTree will hold the data.
+	array uintSortedArray
+	btree *btree.BTree
 
 	children *nodeArray
 }
 
+// newLeaf creates leaf with parent node.
 func newLeaf(parent *Node) *Leaf {
 	return &Leaf{
-		data:     btree.New(degree),
-		children: newNodeArray(),
 		parent:   parent,
+		children: newNodeArray(),
 	}
 }
 
@@ -74,16 +83,21 @@ func (l *Leaf) GetsertAny(it func() (uint, bool), add func() *Node) *Node {
 
 func (l *Leaf) Data() []uint {
 	l.dmu.RLock()
-	defer l.dmu.RUnlock()
+	if l.btree != nil {
+		ret := make([]uint, l.btree.Len())
+		var i int
+		l.btree.Ascend(func(x btree.Item) bool {
+			ret[i] = uint(x.(btreeUint))
+			i++
+			return true
+		})
+		l.dmu.RUnlock()
+		return ret
+	}
+	arr := l.array
+	l.dmu.RUnlock()
 
-	ret := make([]uint, l.data.Len())
-	var i int
-	l.data.Ascend(func(x btree.Item) bool {
-		ret[i] = uint(x.(btreeUint))
-		i++
-		return true
-	})
-	return ret
+	return arr.Copy()
 }
 
 func (l *Leaf) Empty() bool {
@@ -91,21 +105,42 @@ func (l *Leaf) Empty() bool {
 		return false
 	}
 	l.dmu.RLock()
-	dl := l.data.Len()
+	dl := l.btree.Len()
 	l.dmu.RUnlock()
 	return dl == 0
 }
 
 func (l *Leaf) Append(v uint) {
 	l.dmu.Lock()
-	l.data.ReplaceOrInsert(btreeUint(v))
+	switch {
+	case l.btree != nil:
+		l.btree.ReplaceOrInsert(btreeUint(v))
+
+	case l.array.Len() == arrayLimit:
+		l.btree = btree.New(degree)
+		l.array.Ascend(func(v uint) bool {
+			l.btree.ReplaceOrInsert(btreeUint(v))
+			return true
+		})
+		l.btree.ReplaceOrInsert(btreeUint(v))
+		l.array = l.array.Reset()
+
+	default:
+		l.array, _ = l.array.Upsert(v)
+	}
 	l.dmu.Unlock()
 }
 
-// todo use store
 func (l *Leaf) Remove(v uint) (ok bool) {
 	l.dmu.Lock()
-	ok = l.data.Delete(btreeUint(v)) != nil
+	if l.btree != nil {
+		ok = l.btree.Delete(btreeUint(v)) != nil
+		if l.btree.Len() == 0 {
+			l.btree = nil
+		}
+	} else {
+		l.array, _, ok = l.array.Delete(v)
+	}
 	l.dmu.Unlock()
 	return
 }
@@ -113,11 +148,22 @@ func (l *Leaf) Remove(v uint) (ok bool) {
 func (l *Leaf) Ascend(it Iterator) (ok bool) {
 	ok = true
 	l.dmu.RLock()
-	l.data.Ascend(func(i btree.Item) bool {
-		ok = it(uint(i.(btreeUint)))
+	if l.btree != nil {
+		l.btree.Ascend(func(i btree.Item) bool {
+			ok = it(uint(i.(btreeUint)))
+			return ok
+		})
+		l.dmu.RUnlock()
+		return
+	}
+	arr := l.array
+	l.dmu.RUnlock()
+
+	arr.Ascend(func(v uint) bool {
+		ok = it(v)
 		return ok
 	})
-	l.dmu.RUnlock()
+
 	return
 }
 
