@@ -143,6 +143,7 @@ type id struct {
 
 func newID() *id {
 	return &id{
+		c: 1000000,
 		n: make(map[*radix.Node]int64),
 		l: make(map[*radix.Leaf]int64),
 	}

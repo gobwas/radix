@@ -78,7 +78,7 @@ func (n *Node) GetsertLeaf(k string) (ret *Leaf) {
 	if n.values == nil {
 		n.values = make(map[string]*Leaf)
 	}
-	ret = newLeaf(n)
+	ret = newLeaf(n, k)
 	n.values[k] = ret
 	n.mu.Unlock()
 	return
@@ -93,6 +93,18 @@ func (n *Node) DeleteLeaf(k string) *Leaf {
 	}
 	n.mu.Unlock()
 	return ret
+}
+
+func (n *Node) DeleteEmptyLeaf(k string) (leaf *Leaf, ok bool) {
+	n.mu.Lock()
+	leaf, has := n.values[k]
+	if has && leaf.Empty() {
+		delete(n.values, k)
+		leaf.parent = nil
+		ok = true
+	}
+	n.mu.Unlock()
+	return
 }
 
 func (n *Node) Empty() (ok bool) {

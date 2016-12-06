@@ -112,6 +112,43 @@ func TestTrieInsertLookup(t *testing.T) {
 	}
 }
 
+type countVisitor struct {
+	nodes int
+	leafs int
+}
+
+func (c *countVisitor) VisitNode(n *Node) bool            { c.nodes++; return true }
+func (c *countVisitor) VisitLeaf(path Path, l *Leaf) bool { c.leafs++; return true }
+
+func TestTrieDeleteCleanup(t *testing.T) {
+	graphviz.ResetMarkup()
+
+	trie := New()
+	path := PathFromSlice(pairs{{1, "a"}, {2, "b"}})
+
+	before := &countVisitor{}
+	trie.Insert(path, 1)
+	trie.Walk(Path{}, before)
+	if n, l := before.nodes, before.leafs; n != 2 || l != 3 { // leafs 3 is with root leaf
+		buf := &bytes.Buffer{}
+		graphviz.Render(trie, "insert", buf)
+		t.Errorf("after insertion: nodes: %d; leafs: %d; want 2 and 2;\ngraphviz: %s", n, l, buf.String())
+	}
+
+	after := &countVisitor{}
+	trie.Delete(path, 1)
+	trie.Walk(Path{}, after)
+	if n, l := after.nodes, after.leafs; n != 0 || l != 1 {
+		buf := &bytes.Buffer{}
+		graphviz.Render(trie, "delete", buf)
+		t.Errorf("after deletion: nodes: %d; leafs: %d; want 0 and 1;\ngraphviz: %s", n, l, buf.String())
+	} else {
+		buf := &bytes.Buffer{}
+		graphviz.Render(trie, "delete", buf)
+		t.Errorf("after deletion: nodes: %d; leafs: %d; want 0 and 1;\ngraphviz: %s", n, l, buf.String())
+	}
+}
+
 func TestTrieInsertDelete(t *testing.T) {
 	for i, test := range []struct {
 		insert []item

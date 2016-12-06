@@ -16,6 +16,7 @@ const (
 
 type Leaf struct {
 	parent *Node
+	value  string
 
 	// dmu holds mutex for data manipulation.
 	dmu sync.RWMutex
@@ -28,15 +29,20 @@ type Leaf struct {
 }
 
 // newLeaf creates leaf with parent node.
-func newLeaf(parent *Node) *Leaf {
+func newLeaf(parent *Node, value string) *Leaf {
 	return &Leaf{
 		parent:   parent,
+		value:    value,
 		children: newNodeArray(),
 	}
 }
 
 func (l *Leaf) Parent() *Node {
 	return l.parent
+}
+
+func (l *Leaf) Value() string {
+	return l.value
 }
 
 func (l *Leaf) HasChild(key uint) bool {
@@ -63,6 +69,10 @@ func (l *Leaf) GetsertChild(key uint) *Node {
 func (l *Leaf) RemoveChild(key uint) *Node {
 	prev, _ := l.children.Delete(key)
 	return prev
+}
+
+func (l *Leaf) RemoveEmptyChild(key uint) (*Node, bool) {
+	return l.children.DeleteCond(key, (*Node).Empty)
 }
 
 func (l *Leaf) AscendChildren(cb func(*Node) bool) (ok bool) {
@@ -105,9 +115,14 @@ func (l *Leaf) Empty() bool {
 		return false
 	}
 	l.dmu.RLock()
-	dl := l.btree.Len()
+	var n int
+	if l.btree != nil {
+		n = l.btree.Len()
+	} else {
+		n = l.array.Len()
+	}
 	l.dmu.RUnlock()
-	return dl == 0
+	return n == 0
 }
 
 func (l *Leaf) Append(v uint) {
@@ -187,7 +202,9 @@ func LeafInsert(l *Leaf, path Path, value uint, cb nodeIndexer) {
 			var insert bool
 			n = l.GetsertAny(path.AscendKeyIterator(), func() *Node {
 				insert = true
-				return makeTree(path, value, cb)
+				n := makeTree(path, value, cb)
+				n.parent = l
+				return n
 			})
 			if insert {
 				return
