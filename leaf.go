@@ -1,5 +1,7 @@
 package radix
 
+//go:generate ppgo
+
 import (
 	"fmt"
 	"sync"
@@ -7,27 +9,40 @@ import (
 	"github.com/google/btree"
 )
 
-const degree = 128
+const (
+	arrayLimit = 12
+	degree     = 128
+)
 
 type Leaf struct {
 	parent *Node
+	value  string
 
-	dmu  sync.RWMutex
-	data *btree.BTree
+	// dmu holds mutex for data manipulation.
+	dmu sync.RWMutex
+	// If leaf data is at most arrayLimit, uint sorted array is used.
+	// Otherwise BTree will hold the data.
+	array uintSortedArray
+	btree *btree.BTree
 
 	children *nodeArray
 }
 
-func newLeaf(parent *Node) *Leaf {
+// newLeaf creates leaf with parent node.
+func newLeaf(parent *Node, value string) *Leaf {
 	return &Leaf{
-		data:     btree.New(degree),
-		children: newNodeArray(),
 		parent:   parent,
+		value:    value,
+		children: newNodeArray(),
 	}
 }
 
 func (l *Leaf) Parent() *Node {
 	return l.parent
+}
+
+func (l *Leaf) Value() string {
+	return l.value
 }
 
 func (l *Leaf) HasChild(key uint) bool {
@@ -56,6 +71,10 @@ func (l *Leaf) RemoveChild(key uint) *Node {
 	return prev
 }
 
+func (l *Leaf) RemoveEmptyChild(key uint) (*Node, bool) {
+	return l.children.DeleteCond(key, (*Node).Empty)
+}
+
 func (l *Leaf) AscendChildren(cb func(*Node) bool) (ok bool) {
 	return l.children.Ascend(cb)
 }
@@ -74,16 +93,21 @@ func (l *Leaf) GetsertAny(it func() (uint, bool), add func() *Node) *Node {
 
 func (l *Leaf) Data() []uint {
 	l.dmu.RLock()
-	defer l.dmu.RUnlock()
+	if l.btree != nil {
+		ret := make([]uint, l.btree.Len())
+		var i int
+		l.btree.Ascend(func(x btree.Item) bool {
+			ret[i] = uint(x.(btreeUint))
+			i++
+			return true
+		})
+		l.dmu.RUnlock()
+		return ret
+	}
+	arr := l.array
+	l.dmu.RUnlock()
 
-	ret := make([]uint, l.data.Len())
-	var i int
-	l.data.Ascend(func(x btree.Item) bool {
-		ret[i] = uint(x.(btreeUint))
-		i++
-		return true
-	})
-	return ret
+	return arr.Copy()
 }
 
 func (l *Leaf) Empty() bool {
@@ -91,21 +115,47 @@ func (l *Leaf) Empty() bool {
 		return false
 	}
 	l.dmu.RLock()
-	dl := l.data.Len()
+	var n int
+	if l.btree != nil {
+		n = l.btree.Len()
+	} else {
+		n = l.array.Len()
+	}
 	l.dmu.RUnlock()
-	return dl == 0
+	return n == 0
 }
 
 func (l *Leaf) Append(v uint) {
 	l.dmu.Lock()
-	l.data.ReplaceOrInsert(btreeUint(v))
+	switch {
+	case l.btree != nil:
+		l.btree.ReplaceOrInsert(btreeUint(v))
+
+	case l.array.Len() == arrayLimit:
+		l.btree = btree.New(degree)
+		l.array.Ascend(func(v uint) bool {
+			l.btree.ReplaceOrInsert(btreeUint(v))
+			return true
+		})
+		l.btree.ReplaceOrInsert(btreeUint(v))
+		l.array = l.array.Reset()
+
+	default:
+		l.array, _ = l.array.Upsert(v)
+	}
 	l.dmu.Unlock()
 }
 
-// todo use store
 func (l *Leaf) Remove(v uint) (ok bool) {
 	l.dmu.Lock()
-	ok = l.data.Delete(btreeUint(v)) != nil
+	if l.btree != nil {
+		ok = l.btree.Delete(btreeUint(v)) != nil
+		if l.btree.Len() == 0 {
+			l.btree = nil
+		}
+	} else {
+		l.array, _, ok = l.array.Delete(v)
+	}
 	l.dmu.Unlock()
 	return
 }
@@ -113,11 +163,22 @@ func (l *Leaf) Remove(v uint) (ok bool) {
 func (l *Leaf) Ascend(it Iterator) (ok bool) {
 	ok = true
 	l.dmu.RLock()
-	l.data.Ascend(func(i btree.Item) bool {
-		ok = it(uint(i.(btreeUint)))
+	if l.btree != nil {
+		l.btree.Ascend(func(i btree.Item) bool {
+			ok = it(uint(i.(btreeUint)))
+			return ok
+		})
+		l.dmu.RUnlock()
+		return
+	}
+	arr := l.array
+	l.dmu.RUnlock()
+
+	arr.Ascend(func(v uint) bool {
+		ok = it(v)
 		return ok
 	})
-	l.dmu.RUnlock()
+
 	return
 }
 
@@ -141,7 +202,9 @@ func LeafInsert(l *Leaf, path Path, value uint, cb nodeIndexer) {
 			var insert bool
 			n = l.GetsertAny(path.AscendKeyIterator(), func() *Node {
 				insert = true
-				return makeTree(path, value, cb)
+				n := makeTree(path, value, cb)
+				n.parent = l
+				return n
 			})
 			if insert {
 				return

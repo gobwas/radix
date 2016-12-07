@@ -362,6 +362,10 @@ func (a *nodeArray) Do(cb func([]*Node)) {
 }
 
 func (a *nodeArray) Delete(x uint) (*Node, bool) {
+	return a.DeleteCond(x, nil)
+}
+
+func (a *nodeArray) DeleteCond(x uint, predicate func(*Node) bool) (*Node, bool) {
 	a.mu.Lock()
 	// Binary search algorithm.
 	var has bool
@@ -385,6 +389,10 @@ func (a *nodeArray) Delete(x uint) (*Node, bool) {
 		_ = i // in case when i not being used
 	}
 	if !has {
+		a.mu.Unlock()
+		return nil, false
+	}
+	if predicate != nil && !predicate(a.data[i]) {
 		a.mu.Unlock()
 		return nil, false
 	}

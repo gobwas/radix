@@ -10,7 +10,7 @@ type Trie struct {
 
 func New() *Trie {
 	return &Trie{
-		root: newLeaf(nil),
+		root: newLeaf(nil, ""),
 		//heap: NewHeap(2, 0),
 	}
 }
@@ -23,11 +23,33 @@ func (t *Trie) Insert(p Path, v uint) {
 	LeafInsert(t.root, p, v, t.indexNode)
 }
 
+func cleanupBottomTop(leaf *Leaf) {
+	var (
+		n  *Node
+		ok bool
+	)
+	for leaf.Empty() {
+		if n = leaf.parent; n == nil {
+			return
+		}
+		if _, ok = n.DeleteEmptyLeaf(leaf.Value()); !ok {
+			return
+		}
+		if !n.Empty() || n.parent == nil {
+			return
+		}
+		if _, ok = n.parent.RemoveEmptyChild(n.Key()); !ok {
+			return
+		}
+		leaf = n.parent
+	}
+}
+
 func (t *Trie) Delete(path Path, v uint) (ok bool) {
 	leafLookup(t.root, path, lookupStrict, func(l *Leaf) bool {
-		// TODO(s.kamardin) cleanup empty leafs Without nodes
 		if l.Remove(v) {
 			ok = true
+			cleanupBottomTop(l)
 		}
 		return true
 	})
@@ -45,7 +67,7 @@ func (t *Trie) Lookup(path Path, it Iterator) {
 
 func (t *Trie) ForEach(path Path, it func(Path, uint) bool) {
 	leafLookup(t.root, path, lookupStrict, func(l *Leaf) bool {
-		return dig(l, path, func(path Path, lf *Leaf) bool {
+		return dig(l, path, nil, func(path Path, lf *Leaf) bool {
 			return lf.Ascend(func(v uint) bool {
 				return it(path, v)
 			})
@@ -59,16 +81,15 @@ type Visitor interface {
 }
 
 func (t *Trie) Walk(p Path, v Visitor) {
-	var prev *Node
-	dig(t.root, p, func(path Path, lf *Leaf) bool {
-		if lf.parent != nil && lf.parent != prev {
-			if !v.VisitNode(lf.parent) {
-				return false
-			}
-			prev = lf.parent
-		}
-		return v.VisitLeaf(path, lf)
-	})
+	dig(
+		t.root, p,
+		func(path Path, n *Node) bool {
+			return v.VisitNode(n)
+		},
+		func(path Path, lf *Leaf) bool {
+			return v.VisitLeaf(path, lf)
+		},
+	)
 }
 
 type lookupStrategy int
@@ -99,13 +120,16 @@ func leafLookup(lf *Leaf, path Path, s lookupStrategy, it leafIterator) bool {
 	})
 }
 
-func dig(lf *Leaf, path Path, it func(Path, *Leaf) bool) bool {
-	if !it(path, lf) {
+func dig(lf *Leaf, path Path, onNode func(Path, *Node) bool, onLeaf func(Path, *Leaf) bool) bool {
+	if onLeaf != nil && !onLeaf(path, lf) {
 		return false
 	}
 	return lf.AscendChildren(func(n *Node) bool {
+		if onNode != nil && !onNode(path, n) {
+			return false
+		}
 		for k, lf := range n.values {
-			if !dig(lf, path.With(n.key, k), it) {
+			if !dig(lf, path.With(n.key, k), onNode, onLeaf) {
 				return false
 			}
 		}
@@ -209,23 +233,23 @@ func SiftUp(n *Node) *Node {
 			case child.key == n.key:
 				l.RemoveChild(child.key)
 				if l.Empty() {
-					pNode.DeleteLeaf(val)
+					pNode.DeleteEmptyLeaf(val)
 					if pNode.Empty() {
-						root.RemoveChild(pNode.key)
+						root.RemoveEmptyChild(pNode.key)
 					}
 				}
 				for v, lf := range child.values {
 					nlf := nn.GetsertLeaf(v)
 					chn := nlf.GetsertChild(pNode.key)
 					chlf := chn.GetsertLeaf(val)
-					chlf.data = lf.data
+					chlf.btree = lf.btree
 					chlf.children = lf.children
 					chlf.AscendChildren(func(c *Node) bool {
 						c.parent = chlf
 						return true
 					})
 					// cleanup
-					lf.data = nil
+					lf.btree = nil
 					lf.children = nil
 					lf.parent = nil
 				}
