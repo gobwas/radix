@@ -1,7 +1,9 @@
 package radix
 
 type Iterator func(uint) bool
+type TraceIterator func(Path, uint) bool
 type leafIterator func(*Leaf) bool
+type TraceLeafIterator func(Path, *Leaf) bool
 
 type Trie struct {
 	root *Leaf
@@ -56,20 +58,25 @@ func (t *Trie) Delete(path Path, v uint) (ok bool) {
 	return
 }
 
-func (t *Trie) Lookup(path Path, it Iterator) {
-	leafLookup(t.root, path, lookupGreedy, func(l *Leaf) bool {
-		if !l.Ascend(it) {
-			return false
-		}
-		return true
+func (t *Trie) Lookup(search Path, it Iterator) {
+	leafLookup(t.root, search, lookupGreedy, func(l *Leaf) bool {
+		return l.Ascend(it)
 	})
 }
 
-func (t *Trie) ForEach(path Path, it func(Path, uint) bool) {
-	leafLookup(t.root, path, lookupStrict, func(l *Leaf) bool {
-		return dig(l, path, nil, func(path Path, lf *Leaf) bool {
+func (t *Trie) TraceLookup(search Path, it TraceIterator) {
+	leafLookupTrace(t.root, search, Path{}, lookupGreedy, func(trace Path, leaf *Leaf) bool {
+		return leaf.Ascend(func(val uint) bool {
+			return it(trace, val)
+		})
+	})
+}
+
+func (t *Trie) ForEach(search Path, it TraceIterator) {
+	leafLookup(t.root, search, lookupStrict, func(l *Leaf) bool {
+		return dig(l, search, nil, func(trace Path, lf *Leaf) bool {
 			return lf.Ascend(func(v uint) bool {
-				return it(path, v)
+				return it(trace, v)
 			})
 		})
 	})
@@ -99,6 +106,31 @@ const (
 	lookupGreedy
 )
 
+func leafLookupTrace(lf *Leaf, search, trace Path, s lookupStrategy, it TraceLeafIterator) bool {
+	switch s {
+	case lookupStrict:
+		if search.Len() == 0 {
+			return it(trace, lf)
+		}
+	case lookupGreedy:
+		if !it(trace, lf) {
+			return false
+		}
+	}
+	min, max := search.Min(), search.Max()
+	return lf.AscendChildrenRange(min.Key, max.Key, func(n *Node) bool {
+		if v, ok := search.Get(n.key); ok {
+			if leaf := n.GetLeaf(v); leaf != nil {
+				return leafLookupTrace(leaf,
+					search.Without(n.key), trace.With(n.key, v),
+					s, it,
+				)
+			}
+		}
+		return true
+	})
+}
+
 func leafLookup(lf *Leaf, path Path, s lookupStrategy, it leafIterator) bool {
 	switch s {
 	case lookupStrict:
@@ -112,9 +144,11 @@ func leafLookup(lf *Leaf, path Path, s lookupStrategy, it leafIterator) bool {
 	}
 	min, max := path.Min(), path.Max()
 	return lf.AscendChildrenRange(min.Key, max.Key, func(n *Node) bool {
-		v, ok := path.Get(n.key)
-		if ok && n.HasLeaf(v) && !leafLookup(n.GetsertLeaf(v), path.Without(n.key), s, it) {
-			return false
+		if v, ok := path.Get(n.key); ok {
+			leaf := n.GetLeaf(v)
+			if leaf != nil {
+				return leafLookup(n.GetsertLeaf(v), path.Without(n.key), s, it)
+			}
 		}
 		return true
 	})

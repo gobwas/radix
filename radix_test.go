@@ -59,7 +59,9 @@ func TestTrieInsertLookup(t *testing.T) {
 	for i, test := range []struct {
 		insert []item
 		lookup []pairs
-		expect []uint
+
+		expValue []uint
+		expTrace map[uint]Path
 	}{
 		{
 			insert: []item{
@@ -69,7 +71,11 @@ func TestTrieInsertLookup(t *testing.T) {
 				pairs{{1, "a"}, {2, "b"}},
 				pairs{{2, "b"}, {1, "a"}},
 			},
-			expect: []uint{1},
+
+			expValue: []uint{1},
+			expTrace: map[uint]Path{
+				1: PathFromSliceBorrow([]Pair{{1, "a"}, {2, "b"}}),
+			},
 		},
 		{
 			insert: []item{
@@ -83,32 +89,81 @@ func TestTrieInsertLookup(t *testing.T) {
 				pairs{{1, "a"}, {2, "b"}},
 				pairs{{2, "b"}, {1, "a"}},
 			},
-			expect: []uint{1, 2, 3, 4, 5},
+
+			expValue: []uint{1, 2, 3, 4, 5},
+			expTrace: map[uint]Path{
+				1: PathFromSliceBorrow([]Pair{{1, "a"}, {2, "b"}}),
+				2: PathFromSliceBorrow([]Pair{{1, "a"}, {2, "b"}}),
+				3: PathFromSliceBorrow([]Pair{{1, "a"}}),
+				4: PathFromSliceBorrow([]Pair{{2, "b"}}),
+				5: PathFromSliceBorrow([]Pair{}),
+			},
 		},
 	} {
-		trie := New()
-		for _, op := range test.insert {
-			trie.Insert(PathFromSlice(op.p), op.v)
-		}
-
-		before := &bytes.Buffer{}
-		graphviz.Render(trie, fmt.Sprintf("test-%d-before", i), before)
-
-		for _, p := range test.lookup {
-			var result []uint
-			trie.Lookup(PathFromSlice(p), func(v uint) bool {
-				result = append(result, v)
-				return true
-			})
-			if !listEq(result, test.expect) {
-				buf := &bytes.Buffer{}
-				graphviz.Render(trie, fmt.Sprintf("test-%d-after", i), buf)
-				t.Errorf(
-					"[%d] Lookup(%v) = %v; want %v\nTrie graphviz before:\n%s\nTrie graphviz after:\n%s\n",
-					i, p, result, test.expect, before.String(), buf.String(),
-				)
+		t.Run(fmt.Sprintf("Lookup#%d", i), func(t *testing.T) {
+			trie := New()
+			for _, op := range test.insert {
+				trie.Insert(PathFromSlice(op.p), op.v)
 			}
-		}
+
+			before := &bytes.Buffer{}
+			graphviz.Render(trie, fmt.Sprintf("test-%d-before", i), before)
+
+			for _, p := range test.lookup {
+				var value []uint
+				trie.Lookup(PathFromSlice(p), func(v uint) bool {
+					value = append(value, v)
+					return true
+				})
+				if !listEq(value, test.expValue) {
+					buf := &bytes.Buffer{}
+					graphviz.Render(trie, fmt.Sprintf("test-%d-after", i), buf)
+					t.Errorf(
+						"[%d] Lookup(%v) = %v; want %v\nTrie graphviz before:\n%s\nTrie graphviz after:\n%s\n",
+						i, p, value, test.expValue, before.String(), buf.String(),
+					)
+				}
+			}
+		})
+		t.Run(fmt.Sprintf("TraceLookup#%d", i), func(t *testing.T) {
+			trie := New()
+			for _, op := range test.insert {
+				trie.Insert(PathFromSlice(op.p), op.v)
+			}
+
+			before := &bytes.Buffer{}
+			graphviz.Render(trie, fmt.Sprintf("test-%d-before", i), before)
+
+			for _, p := range test.lookup {
+				var (
+					value []uint
+					trace = map[uint]Path{}
+				)
+				trie.TraceLookup(PathFromSlice(p), func(t Path, v uint) bool {
+					value = append(value, v)
+					trace[v] = t
+					return true
+				})
+				if !listEq(value, test.expValue) {
+					buf := &bytes.Buffer{}
+					graphviz.Render(trie, fmt.Sprintf("test-%d-after", i), buf)
+					t.Errorf(
+						"[%d] TraceLookup(%v) = %v; want %v\nTrie graphviz before:\n%s\nTrie graphviz after:\n%s\n",
+						i, p, value, test.expValue, before.String(), buf.String(),
+					)
+				}
+				for v, trace := range trace {
+					if exp := test.expTrace[v]; !trace.Equal(exp) {
+						buf := &bytes.Buffer{}
+						graphviz.Render(trie, fmt.Sprintf("test-%d-after", i), buf)
+						t.Errorf(
+							"[%d] TraceLookup(%v) returned %v with %v trace; want %v\nTrie graphviz before:\n%s\nTrie graphviz after:\n%s\n",
+							i, p, v, trace, exp, before.String(), buf.String(),
+						)
+					}
+				}
+			}
+		})
 	}
 }
 
@@ -121,8 +176,6 @@ func (c *countVisitor) VisitNode(n *Node) bool            { c.nodes++; return tr
 func (c *countVisitor) VisitLeaf(path Path, l *Leaf) bool { c.leafs++; return true }
 
 func TestTrieDeleteCleanup(t *testing.T) {
-	graphviz.ResetMarkup()
-
 	trie := New()
 	path := PathFromSlice(pairs{{1, "a"}, {2, "b"}})
 
@@ -139,10 +192,6 @@ func TestTrieDeleteCleanup(t *testing.T) {
 	trie.Delete(path, 1)
 	trie.Walk(Path{}, after)
 	if n, l := after.nodes, after.leafs; n != 0 || l != 1 {
-		buf := &bytes.Buffer{}
-		graphviz.Render(trie, "delete", buf)
-		t.Errorf("after deletion: nodes: %d; leafs: %d; want 0 and 1;\ngraphviz: %s", n, l, buf.String())
-	} else {
 		buf := &bytes.Buffer{}
 		graphviz.Render(trie, "delete", buf)
 		t.Errorf("after deletion: nodes: %d; leafs: %d; want 0 and 1;\ngraphviz: %s", n, l, buf.String())
@@ -336,12 +385,6 @@ func genTries(count, d, n, v int) (ret []*Trie, del [][]item_p) {
 }
 
 func benchmarkLookup(b *testing.B, d, n, v int) {
-	trie, deepest := genTrie(d, n, v)
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		item := deepest[i%len(deepest)]
-		trie.Lookup(item.p, func(v uint) bool { return true })
-	}
 }
 
 func benchmarkDelete(b *testing.B, d, n, v int) {
@@ -378,7 +421,39 @@ func BenchmarkTrieDelete_1_1_1000(b *testing.B)    { benchmarkDelete(b, 1, 1, 10
 func BenchmarkTrieDelete_1_1_10000(b *testing.B)   { benchmarkDelete(b, 1, 1, 10000) }
 func BenchmarkTrieDelete_1_1_1000000(b *testing.B) { benchmarkDelete(b, 1, 1, 1000000) }
 
-func BenchmarkTrieLookup_1_1_100(b *testing.B)     { benchmarkLookup(b, 1, 1, 100) }
-func BenchmarkTrieLookup_1_1_1000(b *testing.B)    { benchmarkLookup(b, 1, 1, 1000) }
-func BenchmarkTrieLookup_1_1_10000(b *testing.B)   { benchmarkLookup(b, 1, 1, 10000) }
-func BenchmarkTrieLookup_1_1_1000000(b *testing.B) { benchmarkLookup(b, 1, 1, 1000000) }
+type lookupBench struct {
+	depth, nodes, values int
+}
+
+var lookupBenches = []lookupBench{
+	{1, 1, 100},
+	{1, 1, 1000},
+	{1, 1, 10000},
+	{1, 1, 1000000},
+}
+
+func BenchmarkTrieLookup(b *testing.B) {
+	for _, bench := range lookupBenches {
+		b.Run(fmt.Sprintf("%d_%d_%d", bench.depth, bench.nodes, bench.values), func(b *testing.B) {
+			trie, deepest := genTrie(bench.depth, bench.nodes, bench.values)
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				item := deepest[i%len(deepest)]
+				trie.Lookup(item.p, func(v uint) bool { return true })
+			}
+		})
+	}
+}
+
+func BenchmarkTrieTraceLookup(b *testing.B) {
+	for _, bench := range lookupBenches {
+		b.Run(fmt.Sprintf("%d_%d_%d", bench.depth, bench.nodes, bench.values), func(b *testing.B) {
+			trie, deepest := genTrie(bench.depth, bench.nodes, bench.values)
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				item := deepest[i%len(deepest)]
+				trie.TraceLookup(item.p, func(_ Path, _ uint) bool { return true })
+			}
+		})
+	}
+}

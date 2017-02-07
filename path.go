@@ -205,6 +205,18 @@ func (p Path) String() (ret string) {
 	return
 }
 
+func (a Path) Equal(b Path) bool {
+	if a.len != b.len || a.excluded != b.excluded {
+		return false
+	}
+	for i := 0; i < len(a.pairs); i++ {
+		if a.pairs[i] != b.pairs[i] {
+			return false
+		}
+	}
+	return true
+}
+
 func (p Path) includes(i int) bool {
 	return p.excluded&(1<<uint(i)) == 0
 }
