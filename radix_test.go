@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"reflect"
 	"testing"
 
 	. "github.com/gobwas/radix"
@@ -40,12 +41,12 @@ func TestTrieInsert(t *testing.T) {
 			values: []uint{1, 2, 3, 4},
 		},
 	} {
-		trie := New()
+		trie := New(nil)
 		for _, v := range test.values {
 			trie.Insert(PathFromSlice(test.insert), v)
 		}
 		var data []uint
-		trie.ForEach(Path{}, func(p Path, v uint) bool {
+		trie.ForEach(Path{}, func(p []Pair, v uint) bool {
 			data = append(data, v)
 			return true
 		})
@@ -55,13 +56,100 @@ func TestTrieInsert(t *testing.T) {
 	}
 }
 
-func TestTrieInsertLookup(t *testing.T) {
+func TestInserterInsert(t *testing.T) {
+	for i, test := range []struct {
+		inserter Inserter
+		insert   []item
+		exp      map[uint][]Pair
+	}{
+		{
+			inserter: Inserter{
+				NodeOrder: []uint{2},
+			},
+			insert: []item{
+				{pairs{{1, "a"}, {2, "b"}}, 1},
+			},
+			exp: map[uint][]Pair{
+				1: pairs{{2, "b"}, {1, "a"}},
+			},
+		},
+		{
+			inserter: Inserter{
+				NodeOrder: []uint{3, 2, 1},
+			},
+			insert: []item{
+				{pairs{{1, "a"}, {2, "b"}}, 1},
+				{pairs{{1, "a"}}, 2},
+				{pairs{{2, "b"}}, 3},
+				{pairs{}, 4},
+			},
+			exp: map[uint][]Pair{
+				1: pairs{{2, "b"}, {1, "a"}},
+				2: pairs{{1, "a"}},
+				3: pairs{{2, "b"}},
+				4: nil,
+			},
+		},
+		// Partial case.
+		{
+			inserter: Inserter{
+				NodeOrder: []uint{3, 4, 5},
+			},
+			insert: []item{
+				{pairs{{1, "a"}, {2, "st"}}, 1},
+				{pairs{{1, "b"}, {2, "st"}}, 2},
+				{pairs{{3, "c"}, {1, "a"}, {2, "st"}}, 3},
+				{pairs{{3, "c"}, {1, "b"}, {2, "st"}}, 4},
+			},
+			exp: map[uint][]Pair{
+				1: pairs{{1, "a"}, {2, "st"}},
+				2: pairs{{1, "b"}, {2, "st"}},
+				3: pairs{{3, "c"}, {1, "a"}, {2, "st"}},
+				4: pairs{{3, "c"}, {1, "b"}, {2, "st"}},
+			},
+		},
+	} {
+		label := fmt.Sprintf("Insert#%d", i)
+
+		t.Run(label, func(t *testing.T) {
+			root := NewLeaf(nil, "root")
+			for _, op := range test.insert {
+				test.inserter.Insert(root, PathFromSliceBorrow(op.p), op.v)
+			}
+
+			act := map[uint][]Pair{}
+			ForEach(root, Path{}, func(p []Pair, v uint) bool {
+				act[v] = p
+				return true
+			})
+
+			for v, actPairs := range act {
+				if expPairs := test.exp[v]; !reflect.DeepEqual(actPairs, expPairs) {
+					t.Errorf("After insertion got for %v:\n\t%#v\n\twant:\n\t%#v\n", v, actPairs, expPairs)
+
+					expRoot := NewLeaf(nil, "root")
+					for v, p := range test.exp {
+						Inserter{}.ForceInsert(expRoot, p, v)
+					}
+					if err := graphviz.ShowLeaf(expRoot, label+"_exp"); err != nil {
+						t.Logf("could not open trie representation: %s", err)
+					}
+					if err := graphviz.ShowLeaf(root, label+"_act"); err != nil {
+						t.Logf("could not open trie representation: %s", err)
+					}
+				}
+			}
+
+		})
+	}
+
+}
+
+func TestLookupComplete(t *testing.T) {
 	for i, test := range []struct {
 		insert []item
 		lookup []pairs
-
-		expValue []uint
-		expTrace map[uint]Path
+		exp    []uint
 	}{
 		{
 			insert: []item{
@@ -71,9 +159,81 @@ func TestTrieInsertLookup(t *testing.T) {
 				pairs{{1, "a"}, {2, "b"}},
 				pairs{{2, "b"}, {1, "a"}},
 			},
+			exp: []uint{1},
+		},
+		{
+			insert: []item{
+				{pairs{{1, "a"}, {2, "b"}}, 1},
+				{pairs{{1, "a"}, {2, "b"}}, 2},
+				{pairs{{1, "a"}}, 3},
+				{pairs{{2, "b"}}, 4},
+				{pairs{}, 5},
+			},
+			lookup: []pairs{
+				pairs{{1, "a"}, {2, "b"}},
+				pairs{{2, "b"}, {1, "a"}},
+			},
 
-			expValue: []uint{1},
-			expTrace: map[uint]Path{
+			exp: []uint{1, 2, 3, 4, 5},
+		},
+
+		// Partial case.
+		{
+			insert: []item{
+				{pairs{{1, "a"}, {2, "st"}}, 1},
+				{pairs{{1, "b"}, {2, "st"}}, 2},
+				{pairs{{3, "c"}, {1, "a"}, {2, "st"}}, 3},
+				{pairs{{3, "c"}, {1, "b"}, {2, "st"}}, 4},
+			},
+			lookup: []pairs{
+				pairs{{1, "a"}, {2, "st"}},
+			},
+			exp: []uint{1},
+		},
+	} {
+		label := fmt.Sprintf("Lookup#%d", i)
+
+		t.Run(label, func(t *testing.T) {
+			root := NewLeaf(nil, "root")
+			for _, op := range test.insert {
+				(&Inserter{}).ForceInsert(root, op.p, op.v)
+			}
+
+			for i, p := range test.lookup {
+				var value []uint
+				LookupComplete(root, PathFromSlice(p), LookupStrategyGreedy, func(leaf *Leaf) bool {
+					value = append(value, leaf.Data()...)
+					return true
+				})
+				if !listEq(value, test.exp) {
+					t.Errorf(
+						"[%d] Lookup(%v) = %v; want %v",
+						i, p, value, test.exp,
+					)
+					if err := graphviz.ShowLeaf(root, label); err != nil {
+						t.Logf("could not open trie representation: %s", err)
+					}
+				}
+			}
+		})
+	}
+}
+
+func TestLookupPartial(t *testing.T) {
+	for i, test := range []struct {
+		insert []item
+		lookup []pairs
+		exp    map[uint]Path
+	}{
+		{
+			insert: []item{
+				{pairs{{1, "a"}, {2, "b"}}, 1},
+			},
+			lookup: []pairs{
+				pairs{{1, "a"}, {2, "b"}},
+				pairs{{2, "b"}, {1, "a"}},
+			},
+			exp: map[uint]Path{
 				1: PathFromSliceBorrow([]Pair{{1, "a"}, {2, "b"}}),
 			},
 		},
@@ -89,9 +249,7 @@ func TestTrieInsertLookup(t *testing.T) {
 				pairs{{1, "a"}, {2, "b"}},
 				pairs{{2, "b"}, {1, "a"}},
 			},
-
-			expValue: []uint{1, 2, 3, 4, 5},
-			expTrace: map[uint]Path{
+			exp: map[uint]Path{
 				1: PathFromSliceBorrow([]Pair{{1, "a"}, {2, "b"}}),
 				2: PathFromSliceBorrow([]Pair{{1, "a"}, {2, "b"}}),
 				3: PathFromSliceBorrow([]Pair{{1, "a"}}),
@@ -99,67 +257,50 @@ func TestTrieInsertLookup(t *testing.T) {
 				5: PathFromSliceBorrow([]Pair{}),
 			},
 		},
+
+		// Partial case.
+		{
+			insert: []item{
+				{pairs{{1, "a"}, {2, "st"}}, 1},
+				{pairs{{1, "b"}, {2, "st"}}, 2},
+				{pairs{{3, "c"}, {1, "a"}, {2, "st"}}, 3},
+				{pairs{{3, "c"}, {1, "b"}, {2, "st"}}, 4},
+			},
+			lookup: []pairs{
+				pairs{{1, "a"}, {2, "st"}},
+			},
+			exp: map[uint]Path{
+				1: PathFromSliceBorrow([]Pair{{1, "a"}, {2, "st"}}),
+				3: PathFromSliceBorrow([]Pair{{3, "c"}, {1, "a"}, {2, "st"}}),
+			},
+		},
 	} {
-		t.Run(fmt.Sprintf("Lookup#%d", i), func(t *testing.T) {
-			trie := New()
-			for _, op := range test.insert {
-				trie.Insert(PathFromSlice(op.p), op.v)
-			}
+		label := fmt.Sprintf("LookupPartial#%d", i)
 
-			before := &bytes.Buffer{}
-			graphviz.Render(trie, fmt.Sprintf("test-%d-before", i), before)
+		t.Run(label, func(t *testing.T) {
+			root := NewLeaf(nil, "root")
+			for _, op := range test.insert {
+				(&Inserter{}).ForceInsert(root, op.p, op.v)
+			}
 
 			for _, p := range test.lookup {
-				var value []uint
-				trie.Lookup(PathFromSlice(p), func(v uint) bool {
-					value = append(value, v)
+				var trace = map[uint]Path{}
+				LookupPartial(root, PathFromSlice(p), Path{}, LookupStrategyGreedy, func(t Path, l *Leaf) bool {
+					for _, v := range l.Data() {
+						trace[v] = t
+					}
 					return true
 				})
-				if !listEq(value, test.expValue) {
-					buf := &bytes.Buffer{}
-					graphviz.Render(trie, fmt.Sprintf("test-%d-after", i), buf)
-					t.Errorf(
-						"[%d] Lookup(%v) = %v; want %v\nTrie graphviz before:\n%s\nTrie graphviz after:\n%s\n",
-						i, p, value, test.expValue, before.String(), buf.String(),
-					)
-				}
-			}
-		})
-		t.Run(fmt.Sprintf("TraceLookup#%d", i), func(t *testing.T) {
-			trie := New()
-			for _, op := range test.insert {
-				trie.Insert(PathFromSlice(op.p), op.v)
-			}
 
-			before := &bytes.Buffer{}
-			graphviz.Render(trie, fmt.Sprintf("test-%d-before", i), before)
-
-			for _, p := range test.lookup {
-				var (
-					value []uint
-					trace = map[uint]Path{}
-				)
-				trie.TraceLookup(PathFromSlice(p), func(t Path, v uint) bool {
-					value = append(value, v)
-					trace[v] = t
-					return true
-				})
-				if !listEq(value, test.expValue) {
-					buf := &bytes.Buffer{}
-					graphviz.Render(trie, fmt.Sprintf("test-%d-after", i), buf)
-					t.Errorf(
-						"[%d] TraceLookup(%v) = %v; want %v\nTrie graphviz before:\n%s\nTrie graphviz after:\n%s\n",
-						i, p, value, test.expValue, before.String(), buf.String(),
-					)
-				}
 				for v, trace := range trace {
-					if exp := test.expTrace[v]; !trace.Equal(exp) {
-						buf := &bytes.Buffer{}
-						graphviz.Render(trie, fmt.Sprintf("test-%d-after", i), buf)
+					if exp := test.exp[v]; !trace.Equal(exp) {
 						t.Errorf(
-							"[%d] TraceLookup(%v) returned %v with %v trace; want %v\nTrie graphviz before:\n%s\nTrie graphviz after:\n%s\n",
-							i, p, v, trace, exp, before.String(), buf.String(),
+							"[%d] TraceLookup(%v) returned %v with %v trace; want %v",
+							i, p, v, trace, exp,
 						)
+						if err := graphviz.ShowLeaf(root, label); err != nil {
+							t.Logf("could not open trie representation: %s", err)
+						}
 					}
 				}
 			}
@@ -172,11 +313,11 @@ type countVisitor struct {
 	leafs int
 }
 
-func (c *countVisitor) VisitNode(n *Node) bool            { c.nodes++; return true }
-func (c *countVisitor) VisitLeaf(path Path, l *Leaf) bool { c.leafs++; return true }
+func (c *countVisitor) OnNode(p []Pair, n *Node) bool { c.nodes++; return true }
+func (c *countVisitor) OnLeaf(p []Pair, l *Leaf) bool { c.leafs++; return true }
 
 func TestTrieDeleteCleanup(t *testing.T) {
-	trie := New()
+	trie := New(nil)
 	path := PathFromSlice(pairs{{1, "a"}, {2, "b"}})
 
 	before := &countVisitor{}
@@ -229,7 +370,7 @@ func TestTrieInsertDelete(t *testing.T) {
 			expect: []uint{2, 4, 5},
 		},
 	} {
-		trie := New()
+		trie := New(nil)
 		for _, op := range test.insert {
 			trie.Insert(PathFromSlice(op.p), op.v)
 		}
@@ -243,7 +384,7 @@ func TestTrieInsertDelete(t *testing.T) {
 			}
 		}
 		var result []uint
-		trie.ForEach(Path{}, func(p Path, v uint) bool {
+		trie.ForEach(Path{}, func(p []Pair, v uint) bool {
 			result = append(result, v)
 			return true
 		})
@@ -320,7 +461,7 @@ func randStr(n int) (ret []string) {
 }
 
 func benchmarkInsert(b *testing.B, exists int) {
-	t := New()
+	t := New(nil)
 	values := randStr(exists + 1)
 	for i := 0; i < exists; i++ {
 		t.Insert(PathFromSlice([]Pair{{1, values[i]}}), uint(i))
@@ -369,7 +510,7 @@ func trieSize(d, n, v int) int {
 func genTrie(d, n, v int) (*Trie, []item_p) {
 	leafs := trieSize(d, n, v)
 	values := randStr(leafs)
-	t := New()
+	t := New(nil)
 	r := make([]item_p, 0)
 	fill(t, nil, d, n, v, values, &r, new(int), 1, new(uint))
 	return t, r

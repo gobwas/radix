@@ -29,7 +29,7 @@ type Leaf struct {
 }
 
 // newLeaf creates leaf with parent node.
-func newLeaf(parent *Node, value string) *Leaf {
+func NewLeaf(parent *Node, value string) *Leaf {
 	return &Leaf{
 		parent:   parent,
 		value:    value,
@@ -62,8 +62,12 @@ func (l *Leaf) GetChild(key uint) *Node {
 	return n
 }
 
-func (l *Leaf) GetsertChild(key uint) *Node {
-	return l.children.GetsertFn(key, func() *Node { return &Node{key: key} })
+func (l *Leaf) GetsertChild(key uint) (node *Node, inserted bool) {
+	node = l.children.GetsertFn(key, func() *Node {
+		inserted = true
+		return &Node{key: key}
+	})
+	return
 }
 
 func (l *Leaf) RemoveChild(key uint) *Node {
@@ -182,28 +186,50 @@ func (l *Leaf) Ascend(it Iterator) (ok bool) {
 	return
 }
 
-func LeafInsert(l *Leaf, path Path, value uint, cb nodeIndexer) {
-	for {
-		if path.Len() == 0 {
-			l.Append(value)
-			return
-		}
-		// TODO(s.kamardin): use heap sort here to detect max miss factored node.
-		// TODO(s.kamardin): when n.key is not in path, maybe get next element in Path
-		//                   and seek children to ascend after the index of next pair
+// Inserter contains options for inserting values into the tree.
+type Inserter struct {
+	// IndexNode is a callback that will be called on every newly created Node.
+	IndexNode func(*Node)
 
+	// NodeOrder is an order of node keys, that should be kept during insertion.
+	// That is, when we insert path {1:a;2:b;3:c} and NodeOrder is [2,3],
+	// the tree will looks like 2:b -> 3:c -> 1:a.
+	NodeOrder []uint
+}
+
+// Insert inserts value to the leaf that exists (or not and will be created) at
+// the given path starting with the leaf as root.
+//
+// It first inserts/creates nodes from the Inserter's NodeOrder field.
+// Then it takes first node for which there are key and value in the path.
+// If at the current level there are no such nodes, it creates one with some
+// key from the path.
+func (c Inserter) Insert(leaf *Leaf, path Path, value uint) {
+	// First we should save the fixed order of nodes.
+	for _, key := range c.NodeOrder {
+		if val, ok := path.Get(key); ok {
+			n, inserted := leaf.GetsertChild(key)
+			if inserted && c.IndexNode != nil {
+				c.IndexNode(n)
+			}
+			leaf = n.GetsertLeaf(val)
+			path = path.Without(key)
+		}
+	}
+
+	for path.Len() > 0 {
 		// First try to find an existance of any path key in leaf children.
 		// Due to the trie usage pattern, it is probably exists already.
 		// If we do just lookup, leaf will not be locked for other goroutine lookups.
 		// When we decided to insert new node to the leaf, we do the same thing, except
 		// the locking leaf for lookups and other writes.
-		n, ok := l.GetAny(path.AscendKeyIterator())
+		n, ok := leaf.GetAny(path.AscendKeyIterator())
 		if !ok {
 			var insert bool
-			n = l.GetsertAny(path.AscendKeyIterator(), func() *Node {
+			n = leaf.GetsertAny(path.AscendKeyIterator(), func() *Node {
 				insert = true
-				n := makeTree(path, value, cb)
-				n.parent = l
+				n := c.makeTree(path, value)
+				n.parent = leaf
 				return n
 			})
 			if insert {
@@ -214,9 +240,61 @@ func LeafInsert(l *Leaf, path Path, value uint, cb nodeIndexer) {
 		if !ok {
 			panic("inconsistent path state")
 		}
-		l = n.GetsertLeaf(v)
+		leaf = n.GetsertLeaf(v)
 		path = path.Without(n.key)
 	}
+
+	leaf.Append(value)
+}
+
+// ForceInsert inserts value to the leaf that exists (or not and will be
+// created) at the given path starting with the leaf as root.
+//
+// Note that path is inserted as is, without any optimizations.
+func (c Inserter) ForceInsert(leaf *Leaf, pairs []Pair, value uint) {
+	cb := c.IndexNode
+	for _, pair := range pairs {
+		n, inserted := leaf.GetsertChild(pair.Key)
+		if inserted && cb != nil {
+			cb(n)
+		}
+		leaf = n.GetsertLeaf(pair.Value)
+	}
+	leaf.Append(value)
+}
+
+func (c Inserter) makeTree(p Path, v uint) *Node {
+	last, cur, ok := p.Last()
+	if !ok {
+		panic("could not make tree with empty path")
+	}
+	cn := &Node{
+		key: last.Key,
+		val: last.Value,
+	}
+	cl := cn.GetsertLeaf(last.Value)
+	cl.Append(v)
+
+	cb := c.IndexNode
+	if cb != nil {
+		cb(cn)
+	}
+
+	p.Descend(cur, func(p Pair) bool {
+		n := &Node{
+			key: p.Key,
+			val: p.Value,
+		}
+		l := n.GetsertLeaf(p.Value)
+		l.AddChild(cn)
+
+		if cb != nil {
+			cb(cn)
+		}
+		cn, cl = n, l
+		return true
+	})
+	return cn
 }
 
 // Int implements the Item interface for integers.

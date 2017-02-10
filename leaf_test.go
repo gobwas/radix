@@ -34,7 +34,7 @@ func TestLeafAscend(t *testing.T) {
 		},
 	} {
 		t.Run(fmt.Sprintf("append:%d remove:%d", len(test.append), len(test.remove)), func(t *testing.T) {
-			leaf := newLeaf(nil, "")
+			leaf := NewLeaf(nil, "")
 			for _, v := range test.append {
 				leaf.Append(v)
 			}
@@ -104,7 +104,7 @@ func TestLeafAppend(t *testing.T) {
 		},
 	} {
 		t.Run(fmt.Sprintf("append:%d remove:%d", test.append, test.remove), func(t *testing.T) {
-			leaf := newLeaf(nil, "")
+			leaf := NewLeaf(nil, "")
 			for i := 0; i < test.append; i++ {
 				leaf.Append(uint(i))
 			}
