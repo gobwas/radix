@@ -1,11 +1,14 @@
 package radix
 
-type Iterator func(uint) bool
-type PathIterator func([]Pair, uint) bool
-type TraceIterator func(Path, uint) bool
-type TraceLeafIterator func(Path, *Leaf) bool
+type (
+	Iterator      func(uint) bool
+	TraceIterator func([]Pair, uint) bool
+	PathIterator  func(Path, uint) bool
 
-type leafIterator func(*Leaf) bool
+	LeafIterator      func(*Leaf) bool
+	TraceLeafIterator func([]Pair, *Leaf) bool
+	PathLeafIterator  func(Path, *Leaf) bool
+)
 
 type TrieConfig struct {
 	NodeOrder []uint
@@ -73,22 +76,24 @@ func (t *Trie) Delete(path Path, v uint) (ok bool) {
 	return
 }
 
-func (t *Trie) Lookup(search Path, it Iterator) {
-	LookupComplete(t.root, search, LookupStrategyGreedy, func(l *Leaf) bool {
+// Lookup calls LookupComplete with trie root leaf and given query.
+// If query does not contains all trie keys, use LookupPartial.
+func (t *Trie) Lookup(query Path, it Iterator) {
+	LookupComplete(t.root, query, LookupStrategyGreedy, func(l *Leaf) bool {
 		return l.Ascend(it)
 	})
 }
 
-func (t *Trie) TraceLookup(search Path, it TraceIterator) {
-	LookupPartial(t.root, search, Path{}, LookupStrategyGreedy, func(trace Path, leaf *Leaf) bool {
+func (t *Trie) LookupPartial(query Path, it PathIterator) {
+	LookupPartial(t.root, query, Path{}, LookupStrategyGreedy, func(path Path, leaf *Leaf) bool {
 		return leaf.Ascend(func(val uint) bool {
-			return it(trace, val)
+			return it(path, val)
 		})
 	})
 }
 
 // trace is valid only for a lifetime of call of iterator.
-func (t *Trie) ForEach(query Path, it PathIterator) {
+func (t *Trie) ForEach(query Path, it TraceIterator) {
 	ForEach(t.root, query, it)
 }
 
@@ -98,7 +103,7 @@ func (t *Trie) Walk(query Path, v Visitor) {
 	})
 }
 
-func ForEach(leaf *Leaf, query Path, it PathIterator) {
+func ForEach(leaf *Leaf, query Path, it TraceIterator) {
 	LookupComplete(leaf, query, LookupStrategyStrict, func(l *Leaf) bool {
 		return Dig(l, leafVisitor(func(trace []Pair, lf *Leaf) bool {
 			return lf.Ascend(func(v uint) bool {
@@ -115,42 +120,17 @@ const (
 	LookupStrategyGreedy
 )
 
-func leafLookupTrace(lf *Leaf, search, trace Path, s lookupStrategy, it TraceLeafIterator) bool {
-	switch s {
-	case LookupStrategyStrict:
-		if search.Len() == 0 {
-			return it(trace, lf)
-		}
-	case LookupStrategyGreedy:
-		if !it(trace, lf) {
-			return false
-		}
-	}
-	min, max := search.Min(), search.Max()
-	return lf.AscendChildrenRange(min.Key, max.Key, func(n *Node) bool {
-		if v, ok := search.Get(n.key); ok {
-			if leaf := n.GetLeaf(v); leaf != nil {
-				return leafLookupTrace(leaf,
-					search.Without(n.key), trace.With(n.key, v),
-					s, it,
-				)
-			}
-		}
-		return true
-	})
-}
-
-// leafLookupPartial travaerses the trie starting from given leaf.
+// LookupPartial traverses the trie starting from given leaf.
 //
 // If it founds node with key, that is not present in query, it begins to
 // traverse all it childs (leafs).
 //
 // At every traverse iteration it fills whole path from starting leaf.
-// This path is passed aas trace argument to the given iterator.
+// This path is passed as argument to the given iterator.
 //
 // If you have query with all keys of trie, you could use LookupComplete,
 // that is more efficient.
-func LookupPartial(lf *Leaf, query, trace Path, s lookupStrategy, it TraceLeafIterator) bool {
+func LookupPartial(lf *Leaf, query, trace Path, s lookupStrategy, it PathLeafIterator) bool {
 	switch s {
 	case LookupStrategyStrict:
 		if query.Len() == 0 {
@@ -178,13 +158,13 @@ func LookupPartial(lf *Leaf, query, trace Path, s lookupStrategy, it TraceLeafIt
 
 // LookupComplete traverses the trie starting from given leaf.
 //
-// It expects query to be the full. That is, for every key that is stored in trie,
-// there is a value in query.
-// Due to the possibility of reordering in trie, it is possible to loose some values if
-// query will not contain all keys.
+// It expects query to be the full. That is, for every key that is stored in
+// trie, there is a value in query. Due to the possibility of reordering in
+// trie, it is possible to loose some values if query will not contain all
+// keys.
 //
 // To search by a non complete query, call LookupPartial, that is less efficient.
-func LookupComplete(lf *Leaf, query Path, s lookupStrategy, it leafIterator) bool {
+func LookupComplete(lf *Leaf, query Path, s lookupStrategy, it LeafIterator) bool {
 	switch s {
 	case LookupStrategyStrict:
 		if query.Len() == 0 {

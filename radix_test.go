@@ -586,14 +586,14 @@ func BenchmarkTrieLookup(b *testing.B) {
 	}
 }
 
-func BenchmarkTrieTraceLookup(b *testing.B) {
+func BenchmarkTrieLookupPartial(b *testing.B) {
 	for _, bench := range lookupBenches {
 		b.Run(fmt.Sprintf("%d_%d_%d", bench.depth, bench.nodes, bench.values), func(b *testing.B) {
 			trie, deepest := genTrie(bench.depth, bench.nodes, bench.values)
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				item := deepest[i%len(deepest)]
-				trie.TraceLookup(item.p, func(_ Path, _ uint) bool { return true })
+				trie.LookupPartial(item.p, func(_ Path, _ uint) bool { return true })
 			}
 		})
 	}
