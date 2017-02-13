@@ -78,7 +78,7 @@ func (n *Node) GetsertLeaf(k string) (ret *Leaf) {
 	if n.values == nil {
 		n.values = make(map[string]*Leaf)
 	}
-	ret = newLeaf(n, k)
+	ret = NewLeaf(n, k)
 	n.values[k] = ret
 	n.mu.Unlock()
 	return

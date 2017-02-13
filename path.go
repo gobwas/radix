@@ -105,6 +105,13 @@ func (p Path) Prev(cur PathCursor) (Pair, PathCursor, bool) {
 	return Pair{}, PathCursor(-1), false
 }
 
+func (p Path) Iterator() func() (Pair, bool) {
+	// TODO
+	return func() (p Pair, ok bool) {
+		return
+	}
+}
+
 func (p Path) AscendIterator() func() (Pair, bool) {
 	cur := p.Begin()
 	var pr Pair

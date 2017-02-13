@@ -1,20 +1,38 @@
 package radix
 
-type Iterator func(uint) bool
-type TraceIterator func(Path, uint) bool
-type leafIterator func(*Leaf) bool
-type TraceLeafIterator func(Path, *Leaf) bool
+type (
+	Iterator      func(uint) bool
+	TraceIterator func([]Pair, uint) bool
+	PathIterator  func(Path, uint) bool
+
+	LeafIterator      func(*Leaf) bool
+	TraceLeafIterator func([]Pair, *Leaf) bool
+	PathLeafIterator  func(Path, *Leaf) bool
+)
+
+type TrieConfig struct {
+	NodeOrder []uint
+}
 
 type Trie struct {
-	root *Leaf
+	inserter *Inserter
+	root     *Leaf
 	//heap *Heap
 }
 
-func New() *Trie {
-	return &Trie{
-		root: newLeaf(nil, ""),
+func New(config *TrieConfig) *Trie {
+	t := &Trie{
+		inserter: &Inserter{},
+		root:     NewLeaf(nil, ""),
 		//heap: NewHeap(2, 0),
 	}
+
+	t.inserter.IndexNode = t.indexNode
+	if config != nil {
+		t.inserter.NodeOrder = config.NodeOrder
+	}
+
+	return t
 }
 
 func (t *Trie) Insert(p Path, v uint) {
@@ -22,7 +40,7 @@ func (t *Trie) Insert(p Path, v uint) {
 		t.root.Append(v)
 		return
 	}
-	LeafInsert(t.root, p, v, t.indexNode)
+	t.inserter.Insert(t.root, p, v)
 }
 
 func cleanupBottomTop(leaf *Leaf) {
@@ -48,7 +66,7 @@ func cleanupBottomTop(leaf *Leaf) {
 }
 
 func (t *Trie) Delete(path Path, v uint) (ok bool) {
-	leafLookup(t.root, path, lookupStrict, func(l *Leaf) bool {
+	LookupComplete(t.root, path, LookupStrategyStrict, func(l *Leaf) bool {
 		if l.Remove(v) {
 			ok = true
 			cleanupBottomTop(l)
@@ -58,118 +76,157 @@ func (t *Trie) Delete(path Path, v uint) (ok bool) {
 	return
 }
 
-func (t *Trie) Lookup(search Path, it Iterator) {
-	leafLookup(t.root, search, lookupGreedy, func(l *Leaf) bool {
+// Lookup calls LookupComplete with trie root leaf and given query.
+// If query does not contains all trie keys, use LookupPartial.
+func (t *Trie) Lookup(query Path, it Iterator) {
+	LookupComplete(t.root, query, LookupStrategyGreedy, func(l *Leaf) bool {
 		return l.Ascend(it)
 	})
 }
 
-func (t *Trie) TraceLookup(search Path, it TraceIterator) {
-	leafLookupTrace(t.root, search, Path{}, lookupGreedy, func(trace Path, leaf *Leaf) bool {
+func (t *Trie) LookupPartial(query Path, it PathIterator) {
+	LookupPartial(t.root, query, Path{}, LookupStrategyGreedy, func(path Path, leaf *Leaf) bool {
 		return leaf.Ascend(func(val uint) bool {
-			return it(trace, val)
+			return it(path, val)
 		})
 	})
 }
 
-func (t *Trie) ForEach(search Path, it TraceIterator) {
-	leafLookup(t.root, search, lookupStrict, func(l *Leaf) bool {
-		return dig(l, search, nil, func(trace Path, lf *Leaf) bool {
+// trace is valid only for a lifetime of call of iterator.
+func (t *Trie) ForEach(query Path, it TraceIterator) {
+	ForEach(t.root, query, it)
+}
+
+func (t *Trie) Walk(query Path, v Visitor) {
+	LookupComplete(t.root, query, LookupStrategyStrict, func(l *Leaf) bool {
+		return Dig(l, v)
+	})
+}
+
+func ForEach(leaf *Leaf, query Path, it TraceIterator) {
+	LookupComplete(leaf, query, LookupStrategyStrict, func(l *Leaf) bool {
+		return Dig(l, leafVisitor(func(trace []Pair, lf *Leaf) bool {
 			return lf.Ascend(func(v uint) bool {
 				return it(trace, v)
 			})
-		})
+		}))
 	})
-}
-
-type Visitor interface {
-	VisitNode(*Node) bool
-	VisitLeaf(Path, *Leaf) bool
-}
-
-func (t *Trie) Walk(p Path, v Visitor) {
-	dig(
-		t.root, p,
-		func(path Path, n *Node) bool {
-			return v.VisitNode(n)
-		},
-		func(path Path, lf *Leaf) bool {
-			return v.VisitLeaf(path, lf)
-		},
-	)
 }
 
 type lookupStrategy int
 
 const (
-	lookupStrict lookupStrategy = iota
-	lookupGreedy
+	LookupStrategyStrict lookupStrategy = iota
+	LookupStrategyGreedy
 )
 
-func leafLookupTrace(lf *Leaf, search, trace Path, s lookupStrategy, it TraceLeafIterator) bool {
+// LookupPartial traverses the trie starting from given leaf.
+//
+// If it founds node with key, that is not present in query, it begins to
+// traverse all it childs (leafs).
+//
+// At every traverse iteration it fills whole path from starting leaf.
+// This path is passed as argument to the given iterator.
+//
+// If you have query with all keys of trie, you could use LookupComplete,
+// that is more efficient.
+func LookupPartial(lf *Leaf, query, trace Path, s lookupStrategy, it PathLeafIterator) bool {
 	switch s {
-	case lookupStrict:
-		if search.Len() == 0 {
+	case LookupStrategyStrict:
+		if query.Len() == 0 {
 			return it(trace, lf)
 		}
-	case lookupGreedy:
+	case LookupStrategyGreedy:
 		if !it(trace, lf) {
 			return false
 		}
 	}
-	min, max := search.Min(), search.Max()
-	return lf.AscendChildrenRange(min.Key, max.Key, func(n *Node) bool {
-		if v, ok := search.Get(n.key); ok {
+	return lf.AscendChildren(func(n *Node) bool {
+		// If query has filter for this node.
+		if v, ok := query.Get(n.key); ok {
 			if leaf := n.GetLeaf(v); leaf != nil {
-				return leafLookupTrace(leaf,
-					search.Without(n.key), trace.With(n.key, v),
-					s, it,
-				)
+				return LookupPartial(leaf, query.Without(n.key), trace.With(n.key, v), s, it)
 			}
+			// Filter this leaf cause it does not fit query.
+			return true
 		}
-		return true
+		return n.AscendLeafs(func(v string, leaf *Leaf) bool {
+			return LookupPartial(leaf, query, trace.With(n.key, v), s, it)
+		})
 	})
 }
 
-func leafLookup(lf *Leaf, path Path, s lookupStrategy, it leafIterator) bool {
+// LookupComplete traverses the trie starting from given leaf.
+//
+// It expects query to be the full. That is, for every key that is stored in
+// trie, there is a value in query. Due to the possibility of reordering in
+// trie, it is possible to loose some values if query will not contain all
+// keys.
+//
+// To search by a non complete query, call LookupPartial, that is less efficient.
+func LookupComplete(lf *Leaf, query Path, s lookupStrategy, it LeafIterator) bool {
 	switch s {
-	case lookupStrict:
-		if path.Len() == 0 {
+	case LookupStrategyStrict:
+		if query.Len() == 0 {
 			return it(lf)
 		}
-	case lookupGreedy:
+	case LookupStrategyGreedy:
 		if !it(lf) {
 			return false
 		}
 	}
-	min, max := path.Min(), path.Max()
+	min, max := query.Min(), query.Max()
 	return lf.AscendChildrenRange(min.Key, max.Key, func(n *Node) bool {
-		if v, ok := path.Get(n.key); ok {
+		if v, ok := query.Get(n.key); ok {
 			leaf := n.GetLeaf(v)
 			if leaf != nil {
-				return leafLookup(n.GetsertLeaf(v), path.Without(n.key), s, it)
+				return LookupComplete(n.GetsertLeaf(v), query.Without(n.key), s, it)
 			}
 		}
 		return true
 	})
 }
 
-func dig(lf *Leaf, path Path, onNode func(Path, *Node) bool, onLeaf func(Path, *Leaf) bool) bool {
-	if onLeaf != nil && !onLeaf(path, lf) {
+type Visitor interface {
+	OnNode([]Pair, *Node) bool
+	OnLeaf([]Pair, *Leaf) bool
+}
+
+func Dig(leaf *Leaf, visitor Visitor) bool {
+	return dig(leaf, nil, visitor)
+}
+
+func dig(leaf *Leaf, trace []Pair, v Visitor) bool {
+	if !v.OnLeaf(trace, leaf) {
 		return false
 	}
-	return lf.AscendChildren(func(n *Node) bool {
-		if onNode != nil && !onNode(path, n) {
+	return leaf.AscendChildren(func(n *Node) bool {
+		if !v.OnNode(trace, n) {
 			return false
 		}
-		for k, lf := range n.values {
-			if !dig(lf, path.With(n.key, k), onNode, onLeaf) {
+		for val, chLeaf := range n.values {
+			if !dig(chLeaf, append(trace, Pair{n.key, val}), v) {
 				return false
 			}
 		}
 		return true
 	})
 }
+
+type nodeVisitor func([]Pair, *Node) bool
+
+func (self nodeVisitor) OnNode(p []Pair, n *Node) bool {
+	return self(p, n)
+}
+func (nodeVisitor) OnLeaf(_ []Pair, _ *Leaf) bool { return true }
+
+type leafVisitor func([]Pair, *Leaf) bool
+
+func (self leafVisitor) OnLeaf(p []Pair, l *Leaf) bool {
+	return self(p, l)
+}
+
+func (leafVisitor) OnNode(_ []Pair, _ *Node) bool { return true }
 
 func search(lf *Leaf, path Path) (ret []*Node) {
 	min, max := path.Min(), path.Max()
@@ -274,7 +331,7 @@ func SiftUp(n *Node) *Node {
 				}
 				for v, lf := range child.values {
 					nlf := nn.GetsertLeaf(v)
-					chn := nlf.GetsertChild(pNode.key)
+					chn, _ := nlf.GetsertChild(pNode.key)
 					chlf := chn.GetsertLeaf(val)
 					chlf.btree = lf.btree
 					chlf.children = lf.children
@@ -300,32 +357,4 @@ func compress(n *Node) {
 	if met > total/2 {
 		SiftUp(m)
 	}
-}
-
-func makeTree(p Path, v uint, cb nodeIndexer) *Node {
-	last, cur, ok := p.Last()
-	if !ok {
-		panic("could not make tree with empty path")
-	}
-	cn := &Node{
-		key: last.Key,
-		val: last.Value,
-	}
-	cl := cn.GetsertLeaf(last.Value)
-	cl.Append(v)
-	cb(cn)
-
-	p.Descend(cur, func(p Pair) bool {
-		n := &Node{
-			key: p.Key,
-			val: p.Value,
-		}
-		l := n.GetsertLeaf(p.Value)
-		l.AddChild(cn)
-
-		cb(n)
-		cn, cl = n, l
-		return true
-	})
-	return cn
 }

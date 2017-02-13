@@ -63,7 +63,7 @@ func fatal(err error) {
 func main() {
 	flag.Parse()
 
-	t := radix.New()
+	t := radix.New(nil)
 	ls := bufio.NewScanner(os.Stdin)
 	ls.Split(bufio.ScanLines)
 	for ls.Scan() {
