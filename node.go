@@ -26,6 +26,12 @@ func (n *Node) Parent() *Leaf {
 	return n.parent
 }
 
+func (n *Node) LeafCount() int {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	return len(n.values)
+}
+
 func (n *Node) AscendLeafs(it func(string, *Leaf) bool) bool {
 	n.mu.RLock()
 	defer n.mu.RUnlock()
