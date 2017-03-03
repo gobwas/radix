@@ -43,28 +43,6 @@ func (t *Trie) Insert(p Path, v uint) {
 	t.inserter.Insert(t.root, p, v)
 }
 
-func cleanupBottomTop(leaf *Leaf) {
-	var (
-		n  *Node
-		ok bool
-	)
-	for leaf.Empty() {
-		if n = leaf.parent; n == nil {
-			return
-		}
-		if _, ok = n.DeleteEmptyLeaf(leaf.Value()); !ok {
-			return
-		}
-		if !n.Empty() || n.parent == nil {
-			return
-		}
-		if _, ok = n.parent.RemoveEmptyChild(n.Key()); !ok {
-			return
-		}
-		leaf = n.parent
-	}
-}
-
 func (t *Trie) Delete(path Path, v uint) (ok bool) {
 	LookupComplete(t.root, path, LookupStrategyStrict, func(l *Leaf) bool {
 		if l.Remove(v) {
@@ -92,6 +70,10 @@ func (t *Trie) LookupPartial(query Path, it PathIterator) {
 	})
 }
 
+func (t *Trie) Root() *Leaf {
+	return t.root
+}
+
 // ForEach searches all leafs by given query from root and then dig down
 // calling it on every leaf. Note that trace argument of iterator call is valid
 // only for a lifetime of call of iterator.
@@ -102,9 +84,21 @@ func (t *Trie) ForEach(query Path, it TraceIterator) {
 // Walk searches all leafs by given query from root and then dig down
 // calling visitor methods on every leaf and node.
 func (t *Trie) Walk(query Path, v Visitor) {
-	LookupComplete(t.root, query, LookupStrategyStrict, func(l *Leaf) bool {
-		return Dig(l, v)
+	Walk(t.root, query, v)
+}
+
+// SizeOf counts number of leafs and nodes of every leafs that matches query.
+func (t *Trie) SizeOf(query Path) (leafs, nodes int) {
+	return SizeOf(t.root, query)
+}
+
+func SizeOf(leaf *Leaf, query Path) (leafs, nodes int) {
+	v := &InspectorVisitor{}
+	LookupComplete(leaf, query, LookupStrategyStrict, func(l *Leaf) bool {
+		Dig(leaf, v)
+		return true
 	})
+	return v.Leafs(), v.Nodes()
 }
 
 func ForEach(leaf *Leaf, query Path, it TraceIterator) {
@@ -115,6 +109,34 @@ func ForEach(leaf *Leaf, query Path, it TraceIterator) {
 			})
 		}))
 	})
+}
+
+func Walk(leaf *Leaf, query Path, v Visitor) {
+	LookupComplete(leaf, query, LookupStrategyStrict, func(l *Leaf) bool {
+		return Dig(l, v)
+	})
+}
+
+func cleanupBottomTop(leaf *Leaf) {
+	var (
+		n  *Node
+		ok bool
+	)
+	for leaf.Empty() {
+		if n = leaf.parent; n == nil {
+			return
+		}
+		if _, ok = n.DeleteEmptyLeaf(leaf.Value()); !ok {
+			return
+		}
+		if !n.Empty() || n.parent == nil {
+			return
+		}
+		if _, ok = n.parent.RemoveEmptyChild(n.Key()); !ok {
+			return
+		}
+		leaf = n.parent
+	}
 }
 
 type lookupStrategy int
@@ -195,6 +217,23 @@ type Visitor interface {
 	OnNode([]Pair, *Node) bool
 	OnLeaf([]Pair, *Leaf) bool
 }
+
+type InspectorVisitor struct {
+	leafs, nodes int
+}
+
+func (v *InspectorVisitor) OnLeaf(_ []Pair, _ *Leaf) bool {
+	v.leafs++
+	return true
+}
+
+func (v *InspectorVisitor) OnNode(_ []Pair, _ *Node) bool {
+	v.nodes++
+	return true
+}
+
+func (v *InspectorVisitor) Leafs() int { return v.leafs }
+func (v *InspectorVisitor) Nodes() int { return v.nodes }
 
 func Dig(leaf *Leaf, visitor Visitor) bool {
 	return dig(leaf, nil, visitor)
