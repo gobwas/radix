@@ -92,11 +92,15 @@ func (t *Trie) LookupPartial(query Path, it PathIterator) {
 	})
 }
 
-// trace is valid only for a lifetime of call of iterator.
+// ForEach searches all leafs by given query from root and then dig down
+// calling it on every leaf. Note that trace argument of iterator call is valid
+// only for a lifetime of call of iterator.
 func (t *Trie) ForEach(query Path, it TraceIterator) {
 	ForEach(t.root, query, it)
 }
 
+// Walk searches all leafs by given query from root and then dig down
+// calling visitor methods on every leaf and node.
 func (t *Trie) Walk(query Path, v Visitor) {
 	LookupComplete(t.root, query, LookupStrategyStrict, func(l *Leaf) bool {
 		return Dig(l, v)
