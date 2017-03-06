@@ -219,11 +219,16 @@ type Visitor interface {
 }
 
 type InspectorVisitor struct {
+	// WithRoot is an option to include in leafs count rooted Leaf.
+	WithRoot bool
+
 	leafs, nodes int
 }
 
-func (v *InspectorVisitor) OnLeaf(_ []Pair, _ *Leaf) bool {
-	v.leafs++
+func (v *InspectorVisitor) OnLeaf(path []Pair, _ *Leaf) bool {
+	if len(path) != 0 || v.WithRoot {
+		v.leafs++
+	}
 	return true
 }
 
