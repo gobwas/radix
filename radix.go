@@ -214,8 +214,8 @@ func LookupComplete(lf *Leaf, query Path, s lookupStrategy, it LeafIterator) boo
 }
 
 type Visitor interface {
-	OnNode([]Pair, *Node) bool
 	OnLeaf([]Pair, *Leaf) bool
+	OnNode([]Pair, *Node) bool
 }
 
 type InspectorVisitor struct {
@@ -254,6 +254,28 @@ func dig(leaf *Leaf, trace []Pair, v Visitor) bool {
 		}
 		return true
 	})
+}
+
+type fnVisitor struct {
+	onLeaf func([]Pair, *Leaf) bool
+	onNode func([]Pair, *Node) bool
+}
+
+func (f fnVisitor) OnLeaf(p []Pair, l *Leaf) bool {
+	if f.onLeaf != nil {
+		return f.onLeaf(p, l)
+	}
+	return true
+}
+func (f fnVisitor) OnNode(p []Pair, n *Node) bool {
+	if f.onNode != nil {
+		return f.onNode(p, n)
+	}
+	return true
+}
+
+func VisitorFunc(onLeaf func([]Pair, *Leaf) bool, onNode func([]Pair, *Node) bool) fnVisitor {
+	return fnVisitor{onLeaf, onNode}
 }
 
 type nodeVisitor func([]Pair, *Node) bool

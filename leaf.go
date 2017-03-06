@@ -62,6 +62,10 @@ func (l *Leaf) GetChild(key uint) *Node {
 	return n
 }
 
+func (l *Leaf) ChildrenCount() int {
+	return l.children.Len()
+}
+
 func (l *Leaf) GetsertChild(key uint) (node *Node, inserted bool) {
 	node = l.children.GetsertFn(key, func() *Node {
 		inserted = true
