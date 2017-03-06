@@ -11,6 +11,8 @@ import (
 	"github.com/gobwas/radix"
 )
 
+// Draw draws given trie to given writer.
+// Return error only when write fails.
 func Draw(w io.Writer, t *radix.Trie) error {
 	d := New(w)
 	return d.Draw(t)
@@ -177,10 +179,6 @@ func (d *Drawer) writePathPrefixLeaf(leaf *radix.Leaf) (p int) {
 	return utf8.RuneCountInString(suffix)
 }
 
-func middle(n int) int {
-	return int(float64(n) / 2)
-}
-
 func (d *Drawer) tab(n int) {
 	d.bw.Write(bytes.Repeat([]byte{' '}, n))
 }
@@ -199,4 +197,8 @@ func grandNodeParent(node *radix.Node) *radix.Node {
 		return nil
 	}
 	return l.Parent()
+}
+
+func middle(n int) int {
+	return int(float64(n) / 2)
 }
