@@ -1,4 +1,4 @@
-package draw
+package listing
 
 import (
 	"bufio"
@@ -11,15 +11,26 @@ import (
 	"github.com/gobwas/radix"
 )
 
-// Draw draws given trie to given writer.
+// DumpLeaf draws given leaf to given writer.
 // Return error only when write fails.
-func Draw(w io.Writer, t *radix.Trie) error {
-	d := New(w)
-	return d.Draw(t)
+func DumpLeaf(leaf *radix.Leaf, w io.Writer) error {
+	p := New(w)
+	return p.Print(leaf)
 }
 
-// Drawer holds options for drawing trie.
-type Drawer struct {
+// DumpLeafString draws given leaf to a string.
+func DumpLeafString(leaf *radix.Leaf) string {
+	buf := bytes.Buffer{}
+	p := New(&buf)
+	p.Print(leaf)
+	return buf.String()
+}
+
+func Dump(t *radix.Trie, w io.Writer) error { return DumpLeaf(t.Root(), w) }
+func DumpString(t *radix.Trie) string       { return DumpLeafString(t.Root()) }
+
+// Printer contains options for dumping a trie.
+type Printer struct {
 	leafs map[*radix.Node]int
 	nodes map[*radix.Leaf]int
 
@@ -29,30 +40,23 @@ type Drawer struct {
 	bw *bufio.Writer
 }
 
-// New creates new Drawer that writes to w.
-func New(w io.Writer) *Drawer {
-	d := &Drawer{}
+// New creates new Printer that writes to w.
+func New(w io.Writer) *Printer {
+	d := &Printer{}
 	d.bw = bufio.NewWriter(w)
 	d.resetState()
 	return d
 }
 
-// Reset completely resets Drawer state.
-func (d *Drawer) Reset(w io.Writer) {
+// Reset completely resets Printer state.
+func (d *Printer) Reset(w io.Writer) {
 	d.bw.Reset(w)
 	d.resetState()
 }
 
-func (d *Drawer) resetState() {
-	d.leafs = map[*radix.Node]int{}
-	d.nodes = map[*radix.Leaf]int{}
-	d.leafTab = map[*radix.Leaf]int{}
-	d.nodeTab = map[*radix.Node]int{}
-}
-
-// Draw draws given trie to underlying destination.
-func (d *Drawer) Draw(t *radix.Trie) error {
-	radix.Dig(t.Root(), radix.VisitorFunc(
+// Print draws given trie to underlying destination.
+func (d *Printer) Print(leaf *radix.Leaf) error {
+	radix.Dig(leaf, radix.VisitorFunc(
 		func(path []radix.Pair, leaf *radix.Leaf) bool {
 			d.nodes[leaf] = leaf.ChildrenCount()
 			d.leafs[leaf.Parent()] = d.leafs[leaf.Parent()] - 1
@@ -73,7 +77,14 @@ func (d *Drawer) Draw(t *radix.Trie) error {
 	return d.bw.Flush()
 }
 
-func (d *Drawer) writeLeaf(leaf *radix.Leaf) {
+func (d *Printer) resetState() {
+	d.leafs = map[*radix.Node]int{}
+	d.nodes = map[*radix.Leaf]int{}
+	d.leafTab = map[*radix.Leaf]int{}
+	d.nodeTab = map[*radix.Node]int{}
+}
+
+func (d *Printer) writeLeaf(leaf *radix.Leaf) {
 	key := leaf.Value()
 	if key == "" {
 		key = "/"
@@ -100,7 +111,7 @@ func (d *Drawer) writeLeaf(leaf *radix.Leaf) {
 	d.bw.WriteByte('\n')
 }
 
-func (d *Drawer) writeNode(node *radix.Node) {
+func (d *Printer) writeNode(node *radix.Node) {
 	key := "0x" + strconv.FormatUint(uint64(node.Key()), 16)
 
 	var prefix string
@@ -119,7 +130,7 @@ func (d *Drawer) writeNode(node *radix.Node) {
 	d.bw.WriteString("\n")
 }
 
-func (d *Drawer) writeLeafPrefix(leaf *radix.Leaf) {
+func (d *Printer) writeLeafPrefix(leaf *radix.Leaf) {
 	var p int
 	if gp := grandLeafParent(leaf); gp != nil {
 		p = d.writePathPrefixLeaf(gp)
@@ -130,7 +141,7 @@ func (d *Drawer) writeLeafPrefix(leaf *radix.Leaf) {
 	return
 }
 
-func (d *Drawer) writeNodePrefix(node *radix.Node) {
+func (d *Printer) writeNodePrefix(node *radix.Node) {
 	var p int
 	if gp := grandNodeParent(node); gp != nil {
 		p = d.writePathPrefixNode(gp)
@@ -141,7 +152,7 @@ func (d *Drawer) writeNodePrefix(node *radix.Node) {
 	return
 }
 
-func (d *Drawer) writePathPrefixNode(node *radix.Node) (p int) {
+func (d *Printer) writePathPrefixNode(node *radix.Node) (p int) {
 	if node == nil {
 		return 0
 	}
@@ -160,7 +171,7 @@ func (d *Drawer) writePathPrefixNode(node *radix.Node) (p int) {
 	return utf8.RuneCountInString(suffix)
 }
 
-func (d *Drawer) writePathPrefixLeaf(leaf *radix.Leaf) (p int) {
+func (d *Printer) writePathPrefixLeaf(leaf *radix.Leaf) (p int) {
 	if leaf == nil {
 		return 0
 	}
@@ -179,7 +190,7 @@ func (d *Drawer) writePathPrefixLeaf(leaf *radix.Leaf) (p int) {
 	return utf8.RuneCountInString(suffix)
 }
 
-func (d *Drawer) tab(n int) {
+func (d *Printer) tab(n int) {
 	d.bw.Write(bytes.Repeat([]byte{' '}, n))
 }
 

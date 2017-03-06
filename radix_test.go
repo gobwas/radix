@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"math"
 	"math/rand"
+	"os"
 	"reflect"
 	"testing"
 
 	. "github.com/gobwas/radix"
 	"github.com/gobwas/radix/graphviz"
+	"github.com/gobwas/radix/listing"
 )
 
 type pairs []Pair
@@ -320,31 +322,47 @@ func TestTrieDeleteCleanup(t *testing.T) {
 	trie := New(nil)
 	path := PathFromSlice(pairs{{1, "a"}, {2, "b"}})
 
-	before := &countVisitor{}
 	trie.Insert(path, 1)
+
+	before := &countVisitor{}
 	trie.Walk(Path{}, before)
 	if n, l := before.nodes, before.leafs; n != 2 || l != 3 { // leafs 3 is with root leaf
+		listing.Dump(trie, os.Stderr)
 		buf := &bytes.Buffer{}
-		graphviz.Render(trie, "insert", buf)
-		t.Errorf("after insertion: nodes: %d; leafs: %d; want 2 and 2;\ngraphviz: %s", n, l, buf.String())
+		listing.Dump(trie, buf)
+		t.Errorf("after insertion: nodes: %d; leafs: %d; want 2 and 2;\ntrie:\n %s", n, l, buf.String())
 	}
 
-	after := &countVisitor{}
 	trie.Delete(path, 1)
+
+	after := &countVisitor{}
 	trie.Walk(Path{}, after)
 	if n, l := after.nodes, after.leafs; n != 0 || l != 1 {
 		buf := &bytes.Buffer{}
-		graphviz.Render(trie, "delete", buf)
-		t.Errorf("after deletion: nodes: %d; leafs: %d; want 0 and 1;\ngraphviz: %s", n, l, buf.String())
+		listing.Dump(trie, buf)
+		t.Errorf("after deletion: nodes: %d; leafs: %d; want 0 and 1;\ntrie:\n %s", n, l, buf.String())
 	}
 }
 
 func TestTrieInsertDelete(t *testing.T) {
 	for i, test := range []struct {
+		config *TrieConfig
 		insert []item
 		delete []del
 		expect []uint
 	}{
+		{
+			config: &TrieConfig{
+				NodeOrder: []uint{0x10000, 0x10001},
+			},
+			insert: []item{
+				{pairs{{0x1, "test"}, {0x10000, "1"}, {0x10001, "1"}}, 42},
+			},
+			delete: []del{
+				{item{pairs{{0x1, "test"}, {0x10000, "1"}, {0x10001, "1"}}, 42}, true},
+			},
+			expect: []uint{},
+		},
 		{
 			insert: []item{
 				{pairs{{1, "a"}, {2, "b"}}, 1},
@@ -370,13 +388,12 @@ func TestTrieInsertDelete(t *testing.T) {
 			expect: []uint{2, 4, 5},
 		},
 	} {
-		trie := New(nil)
+		trie := New(test.config)
 		for _, op := range test.insert {
 			trie.Insert(PathFromSlice(op.p), op.v)
 		}
 
-		before := &bytes.Buffer{}
-		graphviz.Render(trie, fmt.Sprintf("test-%d-before", i), before)
+		before := listing.DumpString(trie)
 
 		for _, del := range test.delete {
 			if del.ok != trie.Delete(PathFromSlice(del.p), del.v) {
@@ -389,11 +406,10 @@ func TestTrieInsertDelete(t *testing.T) {
 			return true
 		})
 		if !listEq(result, test.expect) {
-			buf := &bytes.Buffer{}
-			graphviz.Render(trie, fmt.Sprintf("test-%d", i), buf)
+			after := listing.DumpString(trie)
 			t.Errorf(
-				"[%d] after Delete; Lookup(%v) = %v; want %v\nTrie graphviz before:\n%s\nTrie graphviz after:\n%s\n",
-				i, pairs{}, result, test.expect, before.String(), buf.String(),
+				"[%d] after Delete; Lookup(%v) = %v; want %v\nTrie before:\n%s\nTrie after:\n%s\n",
+				i, pairs{}, result, test.expect, before, after,
 			)
 		}
 	}

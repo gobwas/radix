@@ -1,4 +1,4 @@
-package draw
+package listing
 
 import (
 	"os"
@@ -12,7 +12,7 @@ type item struct {
 	value uint
 }
 
-func TestDraw(t *testing.T) {
+func TestDump(t *testing.T) {
 	for _, test := range []struct {
 		insert []item
 	}{
@@ -33,7 +33,7 @@ func TestDraw(t *testing.T) {
 			for _, item := range test.insert {
 				trie.Insert(radix.PathFromSlice(item.pairs), item.value)
 			}
-			Draw(os.Stdout, trie)
+			Dump(trie, os.Stdout)
 		})
 	}
 }
