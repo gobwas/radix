@@ -19,11 +19,12 @@ func TestDraw(t *testing.T) {
 		{
 			insert: []item{
 				{[]radix.Pair{{1, "a"}, {2, "b"}}, 42},
-				{[]radix.Pair{{1, "a"}, {3, "c"}}, 10},
+				{[]radix.Pair{{1, "a"}, {3, "c"}, {4, "e"}}, 10},
+				{[]radix.Pair{{1, "d"}, {3, "c"}}, 10},
 				{[]radix.Pair{{4, "foo"}}, 10},
-				//{[]radix.Pair{{4, "foo"}, {5, "c"}}, 10},
-				//{[]radix.Pair{{4, "foo"}, {5, "bar"}}, 10},
-				//{[]radix.Pair{{4, "foo"}, {6, "d"}}, 10},
+				{[]radix.Pair{{4, "foo"}, {5, "c"}}, 10},
+				{[]radix.Pair{{4, "foo"}, {58348, "bar"}}, 10},
+				{[]radix.Pair{{4, "foo"}, {6, "d"}}, 10},
 			},
 		},
 	} {

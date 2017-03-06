@@ -86,7 +86,9 @@ func (d *Drawer) writeLeaf(leaf *radix.Leaf) {
 
 	suffix := "──"
 
-	d.leafTab[leaf] = d.nodeTab[leaf.Parent()] + utf8.RuneCountInString(prefix) + utf8.RuneCountInString(key)
+	d.leafTab[leaf] = 0 + //d.nodeTab[leaf.Parent()] +
+		utf8.RuneCountInString(prefix) +
+		middle(utf8.RuneCountInString(key))
 	d.writeLeafPrefix(leaf)
 
 	d.bw.WriteString(prefix)
@@ -98,7 +100,7 @@ func (d *Drawer) writeLeaf(leaf *radix.Leaf) {
 }
 
 func (d *Drawer) writeNode(node *radix.Node) {
-	key := strconv.FormatUint(uint64(node.Key()), 10)
+	key := "0x" + strconv.FormatUint(uint64(node.Key()), 16)
 
 	var prefix string
 	if d.nodes[node.Parent()] <= 0 {
@@ -107,7 +109,9 @@ func (d *Drawer) writeNode(node *radix.Node) {
 		prefix = "├──"
 	}
 
-	d.nodeTab[node] = d.leafTab[node.Parent()] + 2
+	d.nodeTab[node] = 0 + //d.leafTab[node.Parent()] +
+		utf8.RuneCountInString(prefix) +
+		middle(utf8.RuneCountInString(key))
 	d.writeNodePrefix(node)
 
 	d.bw.WriteString(prefix)
@@ -115,47 +119,70 @@ func (d *Drawer) writeNode(node *radix.Node) {
 	d.bw.WriteString("\n")
 }
 
-func (d *Drawer) writeLeafPrefix(leaf *radix.Leaf) (n int) {
-	gp := grandLeafParent(leaf)
-	if gp != nil {
-		n = d.writeLeafPrefix(gp)
-
-		t := d.leafTab[gp]
-		d.tab(t)
-		n += t
-
-		if d.nodes[gp] > 0 {
-			d.bw.WriteString("│")
-		}
+func (d *Drawer) writeLeafPrefix(leaf *radix.Leaf) {
+	var p int
+	if gp := grandLeafParent(leaf); gp != nil {
+		p = d.writeLeafPrefix2(gp)
 	}
 
-	//t := d.nodeTab[leaf.Parent()]
-	//d.tab(t*0 + 1)
-	//n += t
+	d.tab(d.nodeTab[leaf.Parent()] - p)
 
 	return
 }
 
-func (d *Drawer) writeNodePrefix(node *radix.Node) (n int) {
-	gp := grandNodeParent(node)
-	if gp != nil {
-		n = d.writeNodePrefix(gp)
-
-		t := d.nodeTab[gp]
-		//d.tab(t)
-		n += t
-
-		if d.leafs[gp] > 0 {
-			d.bw.WriteString("│")
-		}
+func (d *Drawer) writeNodePrefix(node *radix.Node) {
+	var p int
+	if gp := grandNodeParent(node); gp != nil {
+		p = d.writeNodePrefix2(gp)
 	}
 
-	t := d.leafTab[node.Parent()]
-	d.tab(t)
-	//n += t
+	d.tab(d.leafTab[node.Parent()] - p)
 
 	return
 }
+
+func (d *Drawer) writeNodePrefix2(node *radix.Node) (p int) {
+	if node == nil {
+		return 0
+	}
+
+	p = d.writeLeafPrefix2(node.Parent())
+
+	var suffix string
+	if d.leafs[node] > 0 {
+		suffix = "│"
+	}
+
+	t := d.nodeTab[node]
+	d.tab(t - p)
+	d.bw.WriteString(suffix)
+
+	return utf8.RuneCountInString(suffix)
+}
+
+func (d *Drawer) writeLeafPrefix2(leaf *radix.Leaf) (p int) {
+	if leaf == nil {
+		return 0
+	}
+
+	p = d.writeNodePrefix2(leaf.Parent())
+
+	var suffix string
+	if d.nodes[leaf] > 0 {
+		suffix = "│"
+	}
+
+	t := d.leafTab[leaf]
+	d.tab(t - p)
+	d.bw.WriteString(suffix)
+
+	return utf8.RuneCountInString(suffix)
+}
+
+func middle(n int) int {
+	return int(float64(n) / 2)
+}
+
 func (d *Drawer) tab(n int) {
 	d.bw.Write(bytes.Repeat([]byte{' '}, n))
 }
