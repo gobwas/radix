@@ -11,16 +11,12 @@ import (
 	"github.com/gobwas/radix"
 )
 
-type record struct {
-	children int
-	tab      int
-}
-
 func Draw(w io.Writer, t *radix.Trie) error {
 	d := New(w)
 	return d.Draw(t)
 }
 
+// Drawer holds options for drawing trie.
 type Drawer struct {
 	leafs map[*radix.Node]int
 	nodes map[*radix.Leaf]int
@@ -31,24 +27,28 @@ type Drawer struct {
 	bw *bufio.Writer
 }
 
+// New creates new Drawer that writes to w.
 func New(w io.Writer) *Drawer {
 	d := &Drawer{}
-
-	d.leafs = map[*radix.Node]int{}
-	d.nodes = map[*radix.Leaf]int{}
-
-	d.leafTab = map[*radix.Leaf]int{}
-	d.nodeTab = map[*radix.Node]int{}
-
 	d.bw = bufio.NewWriter(w)
-
+	d.resetState()
 	return d
 }
 
+// Reset completely resets Drawer state.
 func (d *Drawer) Reset(w io.Writer) {
 	d.bw.Reset(w)
+	d.resetState()
 }
 
+func (d *Drawer) resetState() {
+	d.leafs = map[*radix.Node]int{}
+	d.nodes = map[*radix.Leaf]int{}
+	d.leafTab = map[*radix.Leaf]int{}
+	d.nodeTab = map[*radix.Node]int{}
+}
+
+// Draw draws given trie to underlying destination.
 func (d *Drawer) Draw(t *radix.Trie) error {
 	radix.Dig(t.Root(), radix.VisitorFunc(
 		func(path []radix.Pair, leaf *radix.Leaf) bool {
@@ -86,9 +86,8 @@ func (d *Drawer) writeLeaf(leaf *radix.Leaf) {
 
 	suffix := "──"
 
-	d.leafTab[leaf] = 0 + //d.nodeTab[leaf.Parent()] +
-		utf8.RuneCountInString(prefix) +
-		middle(utf8.RuneCountInString(key))
+	d.leafTab[leaf] = utf8.RuneCountInString(prefix) + middle(utf8.RuneCountInString(key))
+
 	d.writeLeafPrefix(leaf)
 
 	d.bw.WriteString(prefix)
@@ -109,9 +108,8 @@ func (d *Drawer) writeNode(node *radix.Node) {
 		prefix = "├──"
 	}
 
-	d.nodeTab[node] = 0 + //d.leafTab[node.Parent()] +
-		utf8.RuneCountInString(prefix) +
-		middle(utf8.RuneCountInString(key))
+	d.nodeTab[node] = utf8.RuneCountInString(prefix) + middle(utf8.RuneCountInString(key))
+
 	d.writeNodePrefix(node)
 
 	d.bw.WriteString(prefix)
@@ -122,7 +120,7 @@ func (d *Drawer) writeNode(node *radix.Node) {
 func (d *Drawer) writeLeafPrefix(leaf *radix.Leaf) {
 	var p int
 	if gp := grandLeafParent(leaf); gp != nil {
-		p = d.writeLeafPrefix2(gp)
+		p = d.writePathPrefixLeaf(gp)
 	}
 
 	d.tab(d.nodeTab[leaf.Parent()] - p)
@@ -133,7 +131,7 @@ func (d *Drawer) writeLeafPrefix(leaf *radix.Leaf) {
 func (d *Drawer) writeNodePrefix(node *radix.Node) {
 	var p int
 	if gp := grandNodeParent(node); gp != nil {
-		p = d.writeNodePrefix2(gp)
+		p = d.writePathPrefixNode(gp)
 	}
 
 	d.tab(d.leafTab[node.Parent()] - p)
@@ -141,12 +139,12 @@ func (d *Drawer) writeNodePrefix(node *radix.Node) {
 	return
 }
 
-func (d *Drawer) writeNodePrefix2(node *radix.Node) (p int) {
+func (d *Drawer) writePathPrefixNode(node *radix.Node) (p int) {
 	if node == nil {
 		return 0
 	}
 
-	p = d.writeLeafPrefix2(node.Parent())
+	p = d.writePathPrefixLeaf(node.Parent())
 
 	var suffix string
 	if d.leafs[node] > 0 {
@@ -160,12 +158,12 @@ func (d *Drawer) writeNodePrefix2(node *radix.Node) (p int) {
 	return utf8.RuneCountInString(suffix)
 }
 
-func (d *Drawer) writeLeafPrefix2(leaf *radix.Leaf) (p int) {
+func (d *Drawer) writePathPrefixLeaf(leaf *radix.Leaf) (p int) {
 	if leaf == nil {
 		return 0
 	}
 
-	p = d.writeNodePrefix2(leaf.Parent())
+	p = d.writePathPrefixNode(leaf.Parent())
 
 	var suffix string
 	if d.nodes[leaf] > 0 {
