@@ -33,6 +33,8 @@ func (p *PathBuilder) Build() (ret Path) {
 
 type PathCursor int
 
+const MaxPathSize = 32
+
 type Path struct {
 	len      int
 	pairs    []Pair
@@ -47,7 +49,9 @@ func PathFromSliceBorrow(data []Pair) (ret Path) {
 }
 
 func PathFromSlice(data []Pair) (ret Path) {
-	// TODO(s.kamardin) what if len(data)>32?
+	if len(data) > MaxPathSize {
+		panic("max path size limit overflow")
+	}
 	// TODO(s.kamardin) check for duplicates
 	pairs := make([]Pair, len(data))
 	copy(pairs, data)
@@ -55,6 +59,9 @@ func PathFromSlice(data []Pair) (ret Path) {
 }
 
 func PathFromMap(m map[uint]string) (ret Path) {
+	if len(m) > MaxPathSize {
+		panic("max path size limit overflow")
+	}
 	ret.pairs = make([]Pair, len(m))
 	var i int
 	for k, v := range m {
@@ -179,19 +186,64 @@ func (p Path) Max() (r Pair) {
 	return r
 }
 
+func (p Path) Copy() Path {
+	cp := make([]Pair, len(p.pairs))
+	copy(cp, p.pairs)
+	p.pairs = cp
+	return p
+}
+
 func (p Path) With(k uint, v string) Path {
+	var with []Pair
+
 	i, ok := pairSearch(p.pairs, k)
 	if ok {
 		p.include(i)
-		return p
+		if p.pairs[i].Value == v {
+			return p
+		}
+		with = make([]Pair, len(p.pairs))
+	} else if len(p.pairs) == MaxPathSize {
+		panic("path if full")
+	} else {
+		with = make([]Pair, len(p.pairs)+1)
 	}
-	with := make([]Pair, len(p.pairs)+1)
+
 	copy(with[:i], p.pairs[:i])
 	copy(with[i+1:], p.pairs[i:])
 	with[i] = Pair{k, v}
+
 	p.pairs = with
-	p.len++
+	p.len = len(p.pairs)
+
 	return p
+}
+
+func (p *Path) Set(k uint, v string) {
+	i, ok := pairSearch(p.pairs, k)
+	if ok {
+		p.pairs[i].Value = v
+	} else {
+		*p = p.With(k, v)
+	}
+}
+
+func (p *Path) Remove(k uint) {
+	i, ok := pairSearch(p.pairs, k)
+	if !ok {
+		return
+	}
+
+	without := make([]Pair, len(p.pairs)-1)
+	copy(without[:i], p.pairs[:i])
+	copy(without[i:], p.pairs[i+1:])
+
+	p.removeIndex(i)
+
+	p.pairs = without
+	p.len = len(p.pairs)
+
+	return
 }
 
 func (p Path) Without(k uint) Path {
@@ -206,7 +258,7 @@ func (p Path) String() (ret string) {
 	for i := 0; i < len(p.pairs); i++ {
 		if p.includes(i) {
 			pair := p.pairs[i]
-			ret += fmt.Sprintf("%v:%s; ", pair.Key, pair.Value)
+			ret += fmt.Sprintf("%#x:%s; ", pair.Key, pair.Value)
 		}
 	}
 	return
@@ -226,6 +278,12 @@ func (a Path) Equal(b Path) bool {
 
 func (p Path) includes(i int) bool {
 	return p.excluded&(1<<uint(i)) == 0
+}
+
+func (p *Path) removeIndex(i int) {
+	part := p.excluded >> uint(i)        // get part that should be moved;
+	p.excluded &^= part << uint(i)       // clear bits that will be moved;
+	p.excluded |= (part >> 1) << uint(i) // set bits;
 }
 
 func (p *Path) include(i int) {

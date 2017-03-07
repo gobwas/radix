@@ -9,6 +9,7 @@ import (
 	"math/rand"
 	"os"
 	"reflect"
+	"strconv"
 	"testing"
 
 	. "github.com/gobwas/radix"
@@ -147,7 +148,7 @@ func TestInserterInsert(t *testing.T) {
 
 }
 
-func TestLookupComplete(t *testing.T) {
+func TestLookup(t *testing.T) {
 	for i, test := range []struct {
 		insert []item
 		lookup []pairs
@@ -203,7 +204,7 @@ func TestLookupComplete(t *testing.T) {
 
 			for i, p := range test.lookup {
 				var value []uint
-				LookupComplete(root, PathFromSlice(p), LookupStrategyGreedy, func(leaf *Leaf) bool {
+				Lookup(root, PathFromSlice(p), LookupStrategyGreedy, func(leaf *Leaf) bool {
 					value = append(value, leaf.Data()...)
 					return true
 				})
@@ -221,7 +222,7 @@ func TestLookupComplete(t *testing.T) {
 	}
 }
 
-func TestLookupPartial(t *testing.T) {
+func TestSelect(t *testing.T) {
 	for i, test := range []struct {
 		insert []item
 		lookup []pairs
@@ -277,7 +278,7 @@ func TestLookupPartial(t *testing.T) {
 			},
 		},
 	} {
-		label := fmt.Sprintf("LookupPartial#%d", i)
+		label := fmt.Sprintf("Select#%d", i)
 
 		t.Run(label, func(t *testing.T) {
 			root := NewLeaf(nil, "root")
@@ -287,7 +288,7 @@ func TestLookupPartial(t *testing.T) {
 
 			for _, p := range test.lookup {
 				var trace = map[uint]Path{}
-				LookupPartial(root, PathFromSlice(p), Path{}, LookupStrategyGreedy, func(t Path, l *Leaf) bool {
+				Select(root, PathFromSlice(p), Path{}, LookupStrategyGreedy, func(t Path, l *Leaf) bool {
 					for _, v := range l.Data() {
 						trace[v] = t
 					}
@@ -602,14 +603,95 @@ func BenchmarkTrieLookup(b *testing.B) {
 	}
 }
 
-func BenchmarkTrieLookupPartial(b *testing.B) {
-	for _, bench := range lookupBenches {
-		b.Run(fmt.Sprintf("%d_%d_%d", bench.depth, bench.nodes, bench.values), func(b *testing.B) {
-			trie, deepest := genTrie(bench.depth, bench.nodes, bench.values)
+func TestTrieSelect(t *testing.T) {
+	trie := New(&TrieConfig{
+		NodeOrder: []uint{1, 2, 3},
+	})
+
+	trie.Insert(PathFromMap(map[uint]string{1: "a"}), 0xff01)
+	trie.Insert(PathFromMap(map[uint]string{3: "b"}), 0xff02)
+	trie.Insert(PathFromMap(map[uint]string{3: "c"}), 0xff03)
+	trie.Insert(PathFromMap(map[uint]string{1: "a", 3: "b"}), 0xbb01)
+	trie.Insert(PathFromMap(map[uint]string{1: "a", 3: "c"}), 0xbb02)
+
+	for i := 0; i < 2; i++ {
+		k := "key" + strconv.FormatInt(int64(i), 16)
+		trie.Insert(PathFromMap(map[uint]string{1: "a", 2: k, 3: "b"}), uint(i))
+	}
+	for i := 2; i < 4; i++ {
+		k := "key" + strconv.FormatInt(int64(i), 16)
+		trie.Insert(PathFromMap(map[uint]string{1: "a", 2: k, 3: "c"}), uint(i))
+	}
+
+	lookup := PathFromMap(map[uint]string{1: "a", 3: "c"})
+	capture := PathFromMap(map[uint]string{2: ""})
+
+	expStrict := map[string]uint{
+		PathFromMap(map[uint]string{2: "key2"}).String(): 2,
+		PathFromMap(map[uint]string{2: "key3"}).String(): 3,
+		PathFromMap(map[uint]string{2: ""}).String():     0xbb02,
+	}
+	expGreedy := map[string]uint{
+		PathFromMap(map[uint]string{2: "key2"}).String(): 2,
+		PathFromMap(map[uint]string{2: "key3"}).String(): 3,
+		PathFromMap(map[uint]string{2: ""}).String():     0xbb02,
+		PathFromMap(map[uint]string{2: ""}).String():     0xff01,
+		PathFromMap(map[uint]string{2: ""}).String():     0xff03,
+	}
+
+	actStrict := map[string]uint{}
+	actGreedy := map[string]uint{}
+
+	fmt.Println(listing.DumpString(trie))
+
+	trie.SelectStrict(lookup, capture, func(c Path, v uint) bool { actStrict[c.String()] = v; return true })
+	trie.SelectGreedy(lookup, capture, func(c Path, v uint) bool { actGreedy[c.String()] = v; return true })
+
+	if !reflect.DeepEqual(actStrict, expStrict) {
+		t.Errorf("unexpected strict results:\n\t%#v;\n\twant:\n\t%#v", actStrict, expStrict)
+	}
+	if !reflect.DeepEqual(actGreedy, expGreedy) {
+		t.Errorf("unexpected strict results:\n\t%#v;\n\twant:\n\t%#v", actGreedy, expGreedy)
+	}
+}
+
+func BenchmarkTrieSelectStrict(b *testing.B) {
+	for _, test := range []struct {
+		items   int
+		capture int
+	}{
+		{items: 1, capture: 1},
+		{items: 4, capture: 1},
+		{items: 16, capture: 1},
+		{items: 64, capture: 1},
+		{items: 256, capture: 1},
+	} {
+		b.Run(fmt.Sprintf("i%dc%d", test.items, test.capture), func(b *testing.B) {
+			trie := New(nil)
+
+			cm := make(map[uint]string)
+			for j := 0; j < test.capture; j++ {
+				cm[uint(j+2)] = ""
+			}
+
+			capture := PathFromMap(cm)
+			lookup := PathFromMap(map[uint]string{1: "a", uint(test.capture + 2): "b"})
+
+			for i := 0; i < test.items; i++ {
+				prefix := "key" + strconv.FormatInt(int64(i), 16)
+				mp := map[uint]string{
+					1: "a",
+					uint(test.capture + 2): "b",
+				}
+				for j := 0; j < test.capture; j++ {
+					mp[uint(j+2)] = prefix + "_" + strconv.FormatInt(int64(j), 16)
+				}
+				trie.Insert(PathFromMap(mp), uint(i))
+			}
+
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				item := deepest[i%len(deepest)]
-				trie.LookupPartial(item.p, func(_ Path, _ uint) bool { return true })
+				trie.SelectStrict(lookup, capture, func(c Path, _ uint) bool { return true })
 			}
 		})
 	}

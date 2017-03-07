@@ -107,7 +107,7 @@ func (d *Printer) writeLeaf(leaf *radix.Leaf) {
 	d.bw.WriteString(key)
 	d.bw.WriteString(suffix)
 
-	d.bw.WriteString(fmt.Sprintf("%v", leaf.Data()))
+	d.bw.WriteString(fmt.Sprintf("%#x", leaf.Data()))
 	d.bw.WriteByte('\n')
 }
 

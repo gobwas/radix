@@ -44,7 +44,7 @@ func (t *Trie) Insert(p Path, v uint) {
 }
 
 func (t *Trie) Delete(path Path, v uint) (ok bool) {
-	LookupComplete(t.root, path, LookupStrategyStrict, func(l *Leaf) bool {
+	Lookup(t.root, path, LookupStrategyStrict, func(l *Leaf) bool {
 		if l.Remove(v) {
 			ok = true
 			cleanupBottomTop(l)
@@ -54,18 +54,28 @@ func (t *Trie) Delete(path Path, v uint) (ok bool) {
 	return
 }
 
-// Lookup calls LookupComplete with trie root leaf and given query.
-// If query does not contains all trie keys, use LookupPartial.
+// Lookup calls Lookup with trie root leaf and given query.
+// If query does not contains all trie keys, use Select.
 func (t *Trie) Lookup(query Path, it Iterator) {
-	LookupComplete(t.root, query, LookupStrategyGreedy, func(l *Leaf) bool {
+	Lookup(t.root, query, LookupStrategyGreedy, func(l *Leaf) bool {
 		return l.Ascend(it)
 	})
 }
 
-func (t *Trie) LookupPartial(query Path, it PathIterator) {
-	LookupPartial(t.root, query, Path{}, LookupStrategyGreedy, func(path Path, leaf *Leaf) bool {
+// SelectGreedy calls Select with trie root leaf and given query and capture.
+func (t *Trie) SelectGreedy(query, capture Path, it PathIterator) {
+	Select(t.root, query, capture, LookupStrategyGreedy, func(captured Path, leaf *Leaf) bool {
 		return leaf.Ascend(func(val uint) bool {
-			return it(path, val)
+			return it(captured, val)
+		})
+	})
+}
+
+// SelectStrict calls Select with trie root leaf and given query and capture.
+func (t *Trie) SelectStrict(query, capture Path, it PathIterator) {
+	Select(t.root, query, capture, LookupStrategyStrict, func(captured Path, leaf *Leaf) bool {
+		return leaf.Ascend(func(val uint) bool {
+			return it(captured, val)
 		})
 	})
 }
@@ -94,7 +104,7 @@ func (t *Trie) SizeOf(query Path) (leafs, nodes int) {
 
 func SizeOf(leaf *Leaf, query Path) (leafs, nodes int) {
 	v := &InspectorVisitor{}
-	LookupComplete(leaf, query, LookupStrategyStrict, func(l *Leaf) bool {
+	Lookup(leaf, query, LookupStrategyStrict, func(l *Leaf) bool {
 		Dig(leaf, v)
 		return true
 	})
@@ -102,7 +112,7 @@ func SizeOf(leaf *Leaf, query Path) (leafs, nodes int) {
 }
 
 func ForEach(leaf *Leaf, query Path, it TraceIterator) {
-	LookupComplete(leaf, query, LookupStrategyStrict, func(l *Leaf) bool {
+	Lookup(leaf, query, LookupStrategyStrict, func(l *Leaf) bool {
 		return Dig(l, leafVisitor(func(trace []Pair, lf *Leaf) bool {
 			return lf.Ascend(func(v uint) bool {
 				return it(trace, v)
@@ -112,7 +122,7 @@ func ForEach(leaf *Leaf, query Path, it TraceIterator) {
 }
 
 func Walk(leaf *Leaf, query Path, v Visitor) {
-	LookupComplete(leaf, query, LookupStrategyStrict, func(l *Leaf) bool {
+	Lookup(leaf, query, LookupStrategyStrict, func(l *Leaf) bool {
 		return Dig(l, v)
 	})
 }
@@ -146,24 +156,25 @@ const (
 	LookupStrategyGreedy
 )
 
-// LookupPartial traverses the trie starting from given leaf.
+// Select traverses the trie starting from given leaf.
 //
 // If it founds node with key, that is not present in query, it begins to
 // traverse all it childs (leafs).
 //
-// At every traverse iteration it fills whole path from starting leaf.
-// This path is passed as argument to the given iterator.
+// At every traverse iteration it fills path with pairs that are not listen in
+// query and are listed in capture. This path is passed as argument to the
+// given iterator.
 //
-// If you have query with all keys of trie, you could use LookupComplete,
+// If you have query with all keys of trie, you could use Lookup,
 // that is more efficient.
-func LookupPartial(lf *Leaf, query, trace Path, s lookupStrategy, it PathLeafIterator) bool {
+func Select(lf *Leaf, query, capture Path, s lookupStrategy, it PathLeafIterator) bool {
 	switch s {
 	case LookupStrategyStrict:
 		if query.Len() == 0 {
-			return it(trace, lf)
+			return it(capture, lf)
 		}
 	case LookupStrategyGreedy:
-		if !it(trace, lf) {
+		if !it(capture, lf) {
 			return false
 		}
 	}
@@ -171,26 +182,50 @@ func LookupPartial(lf *Leaf, query, trace Path, s lookupStrategy, it PathLeafIte
 		// If query has filter for this node.
 		if v, ok := query.Get(n.key); ok {
 			if leaf := n.GetLeaf(v); leaf != nil {
-				return LookupPartial(leaf, query.Without(n.key), trace.With(n.key, v), s, it)
+				// We do not make capture.With(n.key, v) because it is already
+				// exists in query. That is we fill capture only with keys and
+				// values that are not exists in query.
+				return Select(leaf, query.Without(n.key), capture, s, it)
 			}
 			// Filter this leaf cause it does not fit query.
 			return true
 		}
+
+		// Must copy capture with node's key. That is done to prevent bugs when
+		// node with some key is present in multiple places:
+		//
+		// -- root
+		//      |-- 1
+		//      |   |--a
+		//      |      |--2
+		//      |         |--b
+		//      |-- 2
+		//          |--c
+		set := capture.Has(n.key)
+		var cp Path
+		if set {
+			cp = capture.Copy()
+		} else {
+			cp = capture
+		}
 		return n.AscendLeafs(func(v string, leaf *Leaf) bool {
-			return LookupPartial(leaf, query, trace.With(n.key, v), s, it)
+			if set {
+				cp.Set(n.key, v)
+			}
+			return Select(leaf, query, cp, s, it)
 		})
 	})
 }
 
-// LookupComplete traverses the trie starting from given leaf.
+// Lookup traverses the trie starting from given leaf.
 //
 // It expects query to be the full. That is, for every key that is stored in
 // trie, there is a value in query. Due to the possibility of reordering in
 // trie, it is possible to loose some values if query will not contain all
 // keys.
 //
-// To search by a non complete query, call LookupPartial, that is less efficient.
-func LookupComplete(lf *Leaf, query Path, s lookupStrategy, it LeafIterator) bool {
+// To search by a non-complete query, call Select, that is less efficient.
+func Lookup(lf *Leaf, query Path, s lookupStrategy, it LeafIterator) bool {
 	switch s {
 	case LookupStrategyStrict:
 		if query.Len() == 0 {
@@ -206,7 +241,7 @@ func LookupComplete(lf *Leaf, query Path, s lookupStrategy, it LeafIterator) boo
 		if v, ok := query.Get(n.key); ok {
 			leaf := n.GetLeaf(v)
 			if leaf != nil {
-				return LookupComplete(n.GetsertLeaf(v), query.Without(n.key), s, it)
+				return Lookup(n.GetsertLeaf(v), query.Without(n.key), s, it)
 			}
 		}
 		return true

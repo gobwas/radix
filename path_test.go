@@ -8,6 +8,58 @@ import (
 	. "github.com/gobwas/radix"
 )
 
+func TestPathRemove(t *testing.T) {
+	for _, test := range []struct {
+		data            map[uint]string
+		exclude, remove map[uint]bool
+	}{
+		{
+			data: map[uint]string{
+				0: "a",
+				1: "b",
+				2: "c",
+			},
+			exclude: map[uint]bool{
+				1: true,
+			},
+			remove: map[uint]bool{
+				0: true,
+			},
+		},
+	} {
+		t.Run("", func(t *testing.T) {
+			p := PathFromMap(test.data)
+			for k := range test.exclude {
+				p = p.Without(k)
+			}
+			for k := range test.remove {
+				p.Remove(k)
+			}
+			for k, exp := range test.data {
+				switch {
+				case test.remove[k]:
+					if p.Has(k) {
+						t.Errorf("path has removed key %#x", k)
+					}
+
+				case test.exclude[k]:
+					if p.Has(k) {
+						t.Errorf("path has excluded key %#x", k)
+					}
+
+				case !p.Has(k):
+					t.Errorf("path does not have included key %#x", k)
+
+				default:
+					if act, _ := p.Get(k); act != exp {
+						t.Errorf("unexpected %#x key value: %q; want %q", k, act, exp)
+					}
+				}
+			}
+		})
+	}
+}
+
 func TestPathFirst(t *testing.T) {
 	for i, test := range []struct {
 		data  []Pair
