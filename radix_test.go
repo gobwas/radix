@@ -224,57 +224,46 @@ func TestLookup(t *testing.T) {
 
 func TestSelect(t *testing.T) {
 	for i, test := range []struct {
-		insert []item
-		lookup []pairs
-		exp    map[uint]Path
+		insert   []item
+		lookup   []pairs
+		capture  []uint
+		strategy LookupStrategy
+		exp      map[uint]Path
 	}{
 		{
 			insert: []item{
-				{pairs{{1, "a"}, {2, "b"}}, 1},
+				{pairs{{1, "a"}, {2, "b"}, {3, "c"}}, 1},
 			},
 			lookup: []pairs{
-				pairs{{1, "a"}, {2, "b"}},
-				pairs{{2, "b"}, {1, "a"}},
+				pairs{{1, "a"}, {3, "c"}},
+				pairs{{3, "c"}, {1, "a"}},
 			},
+			capture:  []uint{2},
+			strategy: LookupStrategyGreedy,
 			exp: map[uint]Path{
-				1: PathFromSliceBorrow([]Pair{{1, "a"}, {2, "b"}}),
+				1: PathFromSliceBorrow([]Pair{{2, "b"}}),
 			},
 		},
 		{
 			insert: []item{
-				{pairs{{1, "a"}, {2, "b"}}, 1},
-				{pairs{{1, "a"}, {2, "b"}}, 2},
-				{pairs{{1, "a"}}, 3},
-				{pairs{{2, "b"}}, 4},
+				{pairs{{1, "a"}, {2, "b"}, {3, "c"}}, 1},
+				{pairs{{1, "a"}, {2, "b"}, {3, "c"}}, 2},
+				{pairs{{2, "b"}, {3, "c"}}, 3},
+				{pairs{{2, "b"}, {3, "c"}}, 4},
 				{pairs{}, 5},
 			},
 			lookup: []pairs{
-				pairs{{1, "a"}, {2, "b"}},
-				pairs{{2, "b"}, {1, "a"}},
+				pairs{{1, "a"}, {3, "c"}},
+				pairs{{3, "c"}, {1, "a"}},
 			},
+			capture:  []uint{2},
+			strategy: LookupStrategyGreedy,
 			exp: map[uint]Path{
-				1: PathFromSliceBorrow([]Pair{{1, "a"}, {2, "b"}}),
-				2: PathFromSliceBorrow([]Pair{{1, "a"}, {2, "b"}}),
-				3: PathFromSliceBorrow([]Pair{{1, "a"}}),
+				1: PathFromSliceBorrow([]Pair{{2, "b"}}),
+				2: PathFromSliceBorrow([]Pair{{2, "b"}}),
+				3: PathFromSliceBorrow([]Pair{{2, "b"}}),
 				4: PathFromSliceBorrow([]Pair{{2, "b"}}),
-				5: PathFromSliceBorrow([]Pair{}),
-			},
-		},
-
-		// Partial case.
-		{
-			insert: []item{
-				{pairs{{1, "a"}, {2, "st"}}, 1},
-				{pairs{{1, "b"}, {2, "st"}}, 2},
-				{pairs{{3, "c"}, {1, "a"}, {2, "st"}}, 3},
-				{pairs{{3, "c"}, {1, "b"}, {2, "st"}}, 4},
-			},
-			lookup: []pairs{
-				pairs{{1, "a"}, {2, "st"}},
-			},
-			exp: map[uint]Path{
-				1: PathFromSliceBorrow([]Pair{{1, "a"}, {2, "st"}}),
-				3: PathFromSliceBorrow([]Pair{{3, "c"}, {1, "a"}, {2, "st"}}),
+				5: PathFromSliceBorrow([]Pair{{2, ""}}),
 			},
 		},
 	} {
@@ -286,11 +275,17 @@ func TestSelect(t *testing.T) {
 				(&Inserter{}).ForceInsert(root, op.p, op.v)
 			}
 
+			var c []Pair
+			for _, k := range test.capture {
+				c = append(c, Pair{Key: k})
+			}
+			capture := PathFromSlice(c)
+
 			for _, p := range test.lookup {
 				var trace = map[uint]Path{}
-				Select(root, PathFromSlice(p), Path{}, LookupStrategyGreedy, func(t Path, l *Leaf) bool {
+				Select(root, PathFromSlice(p), capture, LookupStrategyGreedy, func(c Path, l *Leaf) bool {
 					for _, v := range l.Data() {
-						trace[v] = t
+						trace[v] = c
 					}
 					return true
 				})
@@ -298,7 +293,7 @@ func TestSelect(t *testing.T) {
 				for v, trace := range trace {
 					if exp := test.exp[v]; !trace.Equal(exp) {
 						t.Errorf(
-							"[%d] TraceLookup(%v) returned %v with %v trace; want %v",
+							"[%d] Select(%v) returned %v with %v trace; want %v",
 							i, p, v, trace, exp,
 						)
 						if err := graphviz.ShowLeaf(root, label); err != nil {
@@ -597,7 +592,7 @@ func BenchmarkTrieLookup(b *testing.B) {
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
 				item := deepest[i%len(deepest)]
-				trie.Lookup(item.p, func(v uint) bool { return true })
+				trie.LookupGreedy(item.p, func(v uint) bool { return true })
 			}
 		})
 	}

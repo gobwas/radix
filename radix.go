@@ -54,9 +54,17 @@ func (t *Trie) Delete(path Path, v uint) (ok bool) {
 	return
 }
 
-// Lookup calls Lookup with trie root leaf and given query.
+// LookupStrict calls Lookup with trie root leaf and given query.
 // If query does not contains all trie keys, use Select.
-func (t *Trie) Lookup(query Path, it Iterator) {
+func (t *Trie) LookupStrict(query Path, it Iterator) {
+	Lookup(t.root, query, LookupStrategyStrict, func(l *Leaf) bool {
+		return l.Ascend(it)
+	})
+}
+
+// LookupGreedy calls Lookup with trie root leaf and given query.
+// If query does not contains all trie keys, use Select.
+func (t *Trie) LookupGreedy(query Path, it Iterator) {
 	Lookup(t.root, query, LookupStrategyGreedy, func(l *Leaf) bool {
 		return l.Ascend(it)
 	})
@@ -149,10 +157,10 @@ func cleanupBottomTop(leaf *Leaf) {
 	}
 }
 
-type lookupStrategy int
+type LookupStrategy int
 
 const (
-	LookupStrategyStrict lookupStrategy = iota
+	LookupStrategyStrict LookupStrategy = iota
 	LookupStrategyGreedy
 )
 
@@ -167,7 +175,7 @@ const (
 //
 // If you have query with all keys of trie, you could use Lookup,
 // that is more efficient.
-func Select(lf *Leaf, query, capture Path, s lookupStrategy, it PathLeafIterator) bool {
+func Select(lf *Leaf, query, capture Path, s LookupStrategy, it PathLeafIterator) bool {
 	switch s {
 	case LookupStrategyStrict:
 		if query.Len() == 0 {
@@ -225,7 +233,7 @@ func Select(lf *Leaf, query, capture Path, s lookupStrategy, it PathLeafIterator
 // keys.
 //
 // To search by a non-complete query, call Select, that is less efficient.
-func Lookup(lf *Leaf, query Path, s lookupStrategy, it LeafIterator) bool {
+func Lookup(lf *Leaf, query Path, s LookupStrategy, it LeafIterator) bool {
 	switch s {
 	case LookupStrategyStrict:
 		if query.Len() == 0 {
