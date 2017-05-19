@@ -13,7 +13,7 @@ import (
 
 // DumpLeaf draws given leaf to given writer.
 // Return error only when write fails.
-func DumpLeaf(leaf *radix.Leaf, w io.Writer) error {
+func DumpLeaf(w io.Writer, leaf *radix.Leaf) error {
 	p := New(w)
 	return p.Print(leaf)
 }
@@ -26,8 +26,19 @@ func DumpLeafString(leaf *radix.Leaf) string {
 	return buf.String()
 }
 
-func Dump(t *radix.Trie, w io.Writer) error { return DumpLeaf(t.Root(), w) }
-func DumpString(t *radix.Trie) string       { return DumpLeafString(t.Root()) }
+func Dump(w io.Writer, t *radix.Trie) error {
+	p := New(w)
+	return p.Print(t.Root())
+}
+
+func DumpLimit(w io.Writer, t *radix.Trie, nodes, leafs int) error {
+	p := New(w)
+	return p.PrintLimit(t.Root(), nodes, leafs)
+}
+
+func DumpString(t *radix.Trie) string {
+	return DumpLeafString(t.Root())
+}
 
 // Printer contains options for dumping a trie.
 type Printer struct {
@@ -54,26 +65,87 @@ func (d *Printer) Reset(w io.Writer) {
 	d.resetState()
 }
 
-// Print draws given trie to underlying destination.
-func (d *Printer) Print(leaf *radix.Leaf) error {
-	radix.Dig(leaf, radix.VisitorFunc(
-		func(path []radix.Pair, leaf *radix.Leaf) bool {
-			d.nodes[leaf] = leaf.ChildrenCount()
-			d.leafs[leaf.Parent()] = d.leafs[leaf.Parent()] - 1
+type Digger struct {
+	MaxLeafsPerNode int
+	MaxNodesPerLeaf int
 
-			d.writeLeaf(leaf)
+	OnNode func(*radix.Node) bool
+	OnLeaf func(*radix.Leaf) bool
+}
 
-			return true
-		},
-		func(path []radix.Pair, node *radix.Node) bool {
-			d.leafs[node] = node.LeafCount()
-			d.nodes[node.Parent()] = d.nodes[node.Parent()] - 1
+func (d *Digger) Dig(leaf *radix.Leaf) {
+	d.OnLeaf(leaf)
+	d.dig(leaf)
+}
+
+func (d *Digger) dig(leaf *radix.Leaf) {
+	nodeRemain := d.MaxNodesPerLeaf
+	if nodeRemain == 0 {
+		nodeRemain = leaf.ChildrenCount()
+	}
+	leaf.AscendChildren(func(node *radix.Node) bool {
+		if d.OnNode(node) {
+			nodeRemain--
+		}
+
+		leafRemain := d.MaxLeafsPerNode
+		if leafRemain == 0 {
+			leafRemain = node.LeafCount()
+		}
+		node.AscendLeafs(func(_ string, leaf *radix.Leaf) bool {
+			if d.OnLeaf(leaf) {
+				leafRemain--
+			}
+			d.dig(leaf)
+			return leafRemain > 0
+		})
+
+		return nodeRemain > 0
+	})
+}
+
+func (d *Printer) getDigger(n, l int) *Digger {
+	limit := func(n, limit int) int {
+		if n < limit || limit == 0 {
+			return n
+		}
+		return limit
+	}
+
+	return &Digger{
+		MaxNodesPerLeaf: n,
+		MaxLeafsPerNode: l,
+
+		OnNode: func(node *radix.Node) bool {
+			d.leafs[node] = limit(node.LeafCount(), l)
+			d.nodes[node.Parent()] = limit(d.nodes[node.Parent()]-1, n)
 
 			d.writeNode(node)
 
 			return true
 		},
-	))
+		OnLeaf: func(leaf *radix.Leaf) bool {
+			d.nodes[leaf] = limit(leaf.ChildrenCount(), n)
+			if p := leaf.Parent(); p != nil {
+				d.leafs[p] = limit(d.leafs[p]-1, l)
+			}
+
+			d.writeLeaf(leaf)
+
+			return true
+		},
+	}
+
+}
+
+// Print draws given trie to underlying destination.
+func (d *Printer) Print(leaf *radix.Leaf) error {
+	d.getDigger(0, 0).Dig(leaf)
+	return d.bw.Flush()
+}
+
+func (d *Printer) PrintLimit(leaf *radix.Leaf, nodes, leafs int) error {
+	d.getDigger(nodes, leafs).Dig(leaf)
 	return d.bw.Flush()
 }
 
