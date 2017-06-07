@@ -136,27 +136,35 @@ func (l *Leaf) Empty() bool {
 	return n == 0
 }
 
-func (l *Leaf) Append(v uint) {
+// Append appends v to leaf values. It returns true if v was not present there.
+// Note that zero v will not report correct ok value.
+func (l *Leaf) Append(v uint) (ok bool) {
 	l.dmu.Lock()
 	switch {
-	case l.btree != nil:
-		l.btree.ReplaceOrInsert(btreeUint(v))
-
 	case l.array.Len() == arrayLimit:
 		l.btree = btree.New(degree)
 		l.array.Ascend(func(v uint) bool {
 			l.btree.ReplaceOrInsert(btreeUint(v))
 			return true
 		})
-		l.btree.ReplaceOrInsert(btreeUint(v))
 		l.array = l.array.Reset()
+		fallthrough
+
+	case l.btree != nil:
+		prev := l.btree.ReplaceOrInsert(btreeUint(v))
+		ok = prev == nil
 
 	default:
-		l.array, _ = l.array.Upsert(v)
+		var prev uint
+		l.array, prev = l.array.Upsert(v)
+		ok = prev == 0
 	}
 	l.dmu.Unlock()
+
+	return
 }
 
+// Remove removes v from leafs values. It returns true if v was present there.
 func (l *Leaf) Remove(v uint) (ok bool) {
 	l.dmu.Lock()
 	if l.btree != nil {
@@ -211,7 +219,9 @@ type Inserter struct {
 // Then it takes first node for which there are key and value in the path.
 // If at the current level there are no such nodes, it creates one with some
 // key from the path.
-func (c Inserter) Insert(leaf *Leaf, path Path, value uint) {
+//
+// It returns true if value was not present in target leaf's values.
+func (c Inserter) Insert(leaf *Leaf, path Path, value uint) bool {
 	// First we should save the fixed order of nodes.
 	for _, key := range c.NodeOrder {
 		if val, ok := path.Get(key); ok {
@@ -240,7 +250,7 @@ func (c Inserter) Insert(leaf *Leaf, path Path, value uint) {
 				return n
 			})
 			if insert {
-				return
+				return true
 			}
 		}
 		v, ok := path.Get(n.key)
@@ -251,7 +261,7 @@ func (c Inserter) Insert(leaf *Leaf, path Path, value uint) {
 		path = path.Without(n.key)
 	}
 
-	leaf.Append(value)
+	return leaf.Append(value)
 }
 
 // ForceInsert inserts value to the leaf that exists (or not and will be

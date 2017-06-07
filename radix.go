@@ -35,12 +35,11 @@ func New(config *TrieConfig) *Trie {
 	return t
 }
 
-func (t *Trie) Insert(p Path, v uint) {
+func (t *Trie) Insert(p Path, v uint) bool {
 	if p.Len() == 0 {
-		t.root.Append(v)
-		return
+		return t.root.Append(v)
 	}
-	t.inserter.Insert(t.root, p, v)
+	return t.inserter.Insert(t.root, p, v)
 }
 
 func (t *Trie) Delete(path Path, v uint) (ok bool) {

@@ -323,9 +323,9 @@ func TestTrieDeleteCleanup(t *testing.T) {
 	before := &countVisitor{}
 	trie.Walk(Path{}, before)
 	if n, l := before.nodes, before.leafs; n != 2 || l != 3 { // leafs 3 is with root leaf
-		listing.Dump(trie, os.Stderr)
+		listing.Dump(os.Stderr, trie)
 		buf := &bytes.Buffer{}
-		listing.Dump(trie, buf)
+		listing.Dump(buf, trie)
 		t.Errorf("after insertion: nodes: %d; leafs: %d; want 2 and 2;\ntrie:\n %s", n, l, buf.String())
 	}
 
@@ -335,7 +335,7 @@ func TestTrieDeleteCleanup(t *testing.T) {
 	trie.Walk(Path{}, after)
 	if n, l := after.nodes, after.leafs; n != 0 || l != 1 {
 		buf := &bytes.Buffer{}
-		listing.Dump(trie, buf)
+		listing.Dump(buf, trie)
 		t.Errorf("after deletion: nodes: %d; leafs: %d; want 0 and 1;\ntrie:\n %s", n, l, buf.String())
 	}
 }
