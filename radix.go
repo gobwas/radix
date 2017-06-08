@@ -1,13 +1,18 @@
 package radix
 
+import (
+	"bytes"
+	"strconv"
+)
+
 type (
 	Iterator      func(uint) bool
-	TraceIterator func([]Pair, uint) bool
-	PathIterator  func(Path, uint) bool
+	TraceIterator func([]PairStr, uint) bool
+	PathIterator  func(Capture, uint) bool
 
 	LeafIterator      func(*Leaf) bool
-	TraceLeafIterator func([]Pair, *Leaf) bool
-	PathLeafIterator  func(Path, *Leaf) bool
+	TraceLeafIterator func([]PairStr, *Leaf) bool
+	PathLeafIterator  func(Capture, *Leaf) bool
 )
 
 type TrieConfig struct {
@@ -70,8 +75,8 @@ func (t *Trie) LookupGreedy(query Path, it Iterator) {
 }
 
 // SelectGreedy calls Select with trie root leaf and given query and capture.
-func (t *Trie) SelectGreedy(query, capture Path, it PathIterator) {
-	Select(t.root, query, capture, LookupStrategyGreedy, func(captured Path, leaf *Leaf) bool {
+func (t *Trie) SelectGreedy(query Path, capture Capture, it PathIterator) {
+	Select(t.root, query, capture, LookupStrategyGreedy, func(captured Capture, leaf *Leaf) bool {
 		return leaf.Ascend(func(val uint) bool {
 			return it(captured, val)
 		})
@@ -79,8 +84,8 @@ func (t *Trie) SelectGreedy(query, capture Path, it PathIterator) {
 }
 
 // SelectStrict calls Select with trie root leaf and given query and capture.
-func (t *Trie) SelectStrict(query, capture Path, it PathIterator) {
-	Select(t.root, query, capture, LookupStrategyStrict, func(captured Path, leaf *Leaf) bool {
+func (t *Trie) SelectStrict(query Path, capture Capture, it PathIterator) {
+	Select(t.root, query, capture, LookupStrategyStrict, func(captured Capture, leaf *Leaf) bool {
 		return leaf.Ascend(func(val uint) bool {
 			return it(captured, val)
 		})
@@ -120,7 +125,7 @@ func SizeOf(leaf *Leaf, query Path) (leafs, nodes int) {
 
 func ForEach(leaf *Leaf, query Path, it TraceIterator) {
 	Lookup(leaf, query, LookupStrategyStrict, func(l *Leaf) bool {
-		return Dig(l, leafVisitor(func(trace []Pair, lf *Leaf) bool {
+		return Dig(l, leafVisitor(func(trace []PairStr, lf *Leaf) bool {
 			return lf.Ascend(func(v uint) bool {
 				return it(trace, v)
 			})
@@ -163,6 +168,43 @@ const (
 	LookupStrategyGreedy
 )
 
+type Capture map[uint]string
+
+func NewCapture(keys ...uint) Capture {
+	c := make(Capture, len(keys))
+	for _, key := range keys {
+		c[key] = ""
+	}
+	return c
+}
+
+func (c Capture) Copy() Capture {
+	cp := make(Capture, len(c))
+	for key, value := range c {
+		cp[key] = value
+	}
+	return cp
+}
+
+func (c Capture) String() string {
+	var buf bytes.Buffer
+
+	var nonempty bool
+	for key, value := range c {
+		if nonempty {
+			buf.WriteString(", ")
+		}
+		nonempty = true
+
+		buf.WriteString(strconv.FormatUint(uint64(key), 16))
+		buf.WriteString(":")
+		buf.WriteByte('"')
+		buf.WriteString(value)
+		buf.WriteByte('"')
+	}
+	return buf.String()
+}
+
 // Select traverses the trie starting from given leaf.
 //
 // If it founds node with key, that is not present in query, it begins to
@@ -176,7 +218,7 @@ const (
 //
 // If you have query with all keys of trie, you could use Lookup,
 // that is more efficient.
-func Select(lf *Leaf, query, capture Path, s LookupStrategy, it PathLeafIterator) bool {
+func Select(lf *Leaf, query Path, capture Capture, s LookupStrategy, it PathLeafIterator) bool {
 	switch s {
 	case LookupStrategyStrict:
 		if query.Len() == 0 {
@@ -215,16 +257,16 @@ func Select(lf *Leaf, query, capture Path, s LookupStrategy, it PathLeafIterator
 		// That is, when we looking up for items with {2:b} query and capturing
 		// {1:""}, then we receive {1:a} for "item1" and {1:a} for "item2", but
 		// we want {1:""} for item2.
-		prev, set := capture.Get(n.key)
+		prev, set := capture[n.key]
 		r := n.AscendLeafs(func(v string, leaf *Leaf) bool {
 			if set {
-				capture.Set(n.key, v)
+				capture[n.key] = v
 			}
 			return Select(leaf, query, capture, s, it)
 		})
 		if set {
 			// Reset capture to a previous value.
-			capture.Set(n.key, prev)
+			capture[n.key] = prev
 		}
 		return r
 	})
@@ -276,8 +318,8 @@ func Lookup(lf *Leaf, query Path, s LookupStrategy, it LeafIterator) bool {
 }
 
 type Visitor interface {
-	OnLeaf([]Pair, *Leaf) bool
-	OnNode([]Pair, *Node) bool
+	OnLeaf([]PairStr, *Leaf) bool
+	OnNode([]PairStr, *Node) bool
 }
 
 type InspectorVisitor struct {
@@ -287,14 +329,14 @@ type InspectorVisitor struct {
 	leafs, nodes int
 }
 
-func (v *InspectorVisitor) OnLeaf(path []Pair, _ *Leaf) bool {
+func (v *InspectorVisitor) OnLeaf(path []PairStr, _ *Leaf) bool {
 	if len(path) != 0 || v.WithRoot {
 		v.leafs++
 	}
 	return true
 }
 
-func (v *InspectorVisitor) OnNode(_ []Pair, _ *Node) bool {
+func (v *InspectorVisitor) OnNode(_ []PairStr, _ *Node) bool {
 	v.nodes++
 	return true
 }
@@ -306,7 +348,7 @@ func Dig(leaf *Leaf, visitor Visitor) bool {
 	return dig(leaf, nil, visitor)
 }
 
-func dig(leaf *Leaf, trace []Pair, v Visitor) bool {
+func dig(leaf *Leaf, trace []PairStr, v Visitor) bool {
 	if !v.OnLeaf(trace, leaf) {
 		return false
 	}
@@ -315,7 +357,7 @@ func dig(leaf *Leaf, trace []Pair, v Visitor) bool {
 			return false
 		}
 		for val, chLeaf := range n.values {
-			if !dig(chLeaf, append(trace, Pair{n.key, val}), v) {
+			if !dig(chLeaf, append(trace, PairStr{n.key, val}), v) {
 				return false
 			}
 		}
@@ -324,41 +366,41 @@ func dig(leaf *Leaf, trace []Pair, v Visitor) bool {
 }
 
 type fnVisitor struct {
-	onLeaf func([]Pair, *Leaf) bool
-	onNode func([]Pair, *Node) bool
+	onLeaf func([]PairStr, *Leaf) bool
+	onNode func([]PairStr, *Node) bool
 }
 
-func (f fnVisitor) OnLeaf(p []Pair, l *Leaf) bool {
+func (f fnVisitor) OnLeaf(p []PairStr, l *Leaf) bool {
 	if f.onLeaf != nil {
 		return f.onLeaf(p, l)
 	}
 	return true
 }
-func (f fnVisitor) OnNode(p []Pair, n *Node) bool {
+func (f fnVisitor) OnNode(p []PairStr, n *Node) bool {
 	if f.onNode != nil {
 		return f.onNode(p, n)
 	}
 	return true
 }
 
-func VisitorFunc(onLeaf func([]Pair, *Leaf) bool, onNode func([]Pair, *Node) bool) fnVisitor {
+func VisitorFunc(onLeaf func([]PairStr, *Leaf) bool, onNode func([]PairStr, *Node) bool) fnVisitor {
 	return fnVisitor{onLeaf, onNode}
 }
 
-type nodeVisitor func([]Pair, *Node) bool
+type nodeVisitor func([]PairStr, *Node) bool
 
-func (self nodeVisitor) OnNode(p []Pair, n *Node) bool {
+func (self nodeVisitor) OnNode(p []PairStr, n *Node) bool {
 	return self(p, n)
 }
-func (nodeVisitor) OnLeaf(_ []Pair, _ *Leaf) bool { return true }
+func (nodeVisitor) OnLeaf(_ []PairStr, _ *Leaf) bool { return true }
 
-type leafVisitor func([]Pair, *Leaf) bool
+type leafVisitor func([]PairStr, *Leaf) bool
 
-func (self leafVisitor) OnLeaf(p []Pair, l *Leaf) bool {
+func (self leafVisitor) OnLeaf(p []PairStr, l *Leaf) bool {
 	return self(p, l)
 }
 
-func (leafVisitor) OnNode(_ []Pair, _ *Node) bool { return true }
+func (leafVisitor) OnNode(_ []PairStr, _ *Node) bool { return true }
 
 func search(lf *Leaf, path Path) (ret []*Node) {
 	min, max := path.KeyRange()
@@ -403,7 +445,9 @@ func major(n *Node) (*Node, int, int) {
 			case counter == 0:
 				candidate = child
 				counter = 1
-			case child.key == candidate.key && child.HasLeaf(candidate.val):
+				// TODO check this algrorithm with tests.
+				//	case child.key == candidate.key && child.HasLeaf(candidate.val):
+			case child.key == candidate.key:
 				counter++
 			default:
 				counter--
@@ -417,7 +461,8 @@ func major(n *Node) (*Node, int, int) {
 	counter = 0
 	for _, l := range n.values {
 		l.AscendChildren(func(child *Node) bool {
-			if child.key == candidate.key && child.HasLeaf(candidate.val) {
+			//if child.key == candidate.key && child.HasLeaf(candidate.val) {
+			if child.key == candidate.key {
 				counter++
 			}
 			return true
@@ -462,9 +507,9 @@ func SiftUp(n *Node) *Node {
 					}
 				}
 				for v, lf := range child.values {
-					nlf := nn.GetsertLeaf(v)
+					nlf := nn.GetsertLeafStr(v)
 					chn, _ := nlf.GetsertChild(pNode.key)
-					chlf := chn.GetsertLeaf(val)
+					chlf := chn.GetsertLeafStr(val)
 					chlf.btree = lf.btree
 					chlf.children = lf.children
 					chlf.AscendChildren(func(c *Node) bool {

@@ -2,10 +2,7 @@ package radix
 
 //go:generate ppgo
 
-import (
-	"fmt"
-	"sync"
-)
+import "sync"
 
 type Node struct {
 	mu sync.RWMutex
@@ -13,9 +10,6 @@ type Node struct {
 	key    uint
 	values map[string]*Leaf
 	parent *Leaf
-
-	// first set value
-	val string
 }
 
 func (n *Node) Key() uint {
@@ -43,37 +37,41 @@ func (n *Node) AscendLeafs(it func(string, *Leaf) bool) bool {
 	return true
 }
 
-func (n *Node) HasLeaf(k string) (ok bool) {
+func (n *Node) HasLeaf(k []byte) (ok bool) {
 	n.mu.RLock()
-	_, ok = n.values[k]
+	_, ok = n.values[string(k)]
 	n.mu.RUnlock()
 	return
 }
 
-func (n *Node) GetLeaf(k string) (ret *Leaf) {
+func (n *Node) GetLeaf(k []byte) (ret *Leaf) {
 	n.mu.RLock()
-	ret = n.values[k]
+	ret = n.values[string(k)]
 	n.mu.RUnlock()
 	return
 }
 
-func (n *Node) InsertLeaf(k string, l *Leaf) {
-	var has bool
+func (n *Node) GetsertLeaf(k []byte) (ret *Leaf) {
+	var ok bool
 	n.mu.Lock()
+	ret, ok = n.values[string(k)]
+	if ok {
+		n.mu.Unlock()
+		return
+	}
 	if n.values == nil {
 		n.values = make(map[string]*Leaf, 1)
-	} else {
-		_, has = n.values[k]
 	}
-	n.values[k] = l
+
+	cp := string(k)
+	ret = NewLeaf(n, cp)
+	n.values[cp] = ret
+
 	n.mu.Unlock()
-	l.parent = n
-	if has {
-		panic(fmt.Sprintf("node %v is already has %v", n.key, k))
-	}
+	return
 }
 
-func (n *Node) GetsertLeaf(k string) (ret *Leaf) {
+func (n *Node) GetsertLeafStr(k string) (ret *Leaf) {
 	var ok bool
 	n.mu.Lock()
 	ret, ok = n.values[k]
@@ -84,17 +82,19 @@ func (n *Node) GetsertLeaf(k string) (ret *Leaf) {
 	if n.values == nil {
 		n.values = make(map[string]*Leaf, 1)
 	}
+
 	ret = NewLeaf(n, k)
 	n.values[k] = ret
+
 	n.mu.Unlock()
 	return
 }
 
-func (n *Node) DeleteLeaf(k string) *Leaf {
+func (n *Node) DeleteLeaf(k []byte) *Leaf {
 	n.mu.Lock()
-	ret, ok := n.values[k]
+	ret, ok := n.values[string(k)]
 	if ok {
-		delete(n.values, k)
+		delete(n.values, string(k))
 		ret.parent = nil
 	}
 	n.mu.Unlock()
@@ -103,9 +103,9 @@ func (n *Node) DeleteLeaf(k string) *Leaf {
 
 func (n *Node) DeleteEmptyLeaf(k string) (leaf *Leaf, ok bool) {
 	n.mu.Lock()
-	leaf, has := n.values[k]
+	leaf, has := n.values[string(k)]
 	if has && leaf.Empty() {
-		delete(n.values, k)
+		delete(n.values, string(k))
 		leaf.parent = nil
 		ok = true
 	}

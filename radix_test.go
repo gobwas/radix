@@ -5,7 +5,6 @@ package radix_test
 import (
 	"bytes"
 	"fmt"
-	"math"
 	"math/rand"
 	"os"
 	"reflect"
@@ -17,7 +16,7 @@ import (
 	"github.com/gobwas/radix/listing"
 )
 
-type pairs []Pair
+type pairs []PairStr
 
 type item struct {
 	p pairs
@@ -46,10 +45,10 @@ func TestTrieInsert(t *testing.T) {
 	} {
 		trie := New(nil)
 		for _, v := range test.values {
-			trie.Insert(PathFromSlice(test.insert), v)
+			trie.Insert(PathFromSliceStr(test.insert), v)
 		}
 		var data []uint
-		trie.ForEach(Path{}, func(p []Pair, v uint) bool {
+		trie.ForEach(Path{}, func(p []PairStr, v uint) bool {
 			data = append(data, v)
 			return true
 		})
@@ -63,7 +62,7 @@ func TestInserterInsert(t *testing.T) {
 	for i, test := range []struct {
 		inserter Inserter
 		insert   []item
-		exp      map[uint][]Pair
+		exp      map[uint][]PairStr
 	}{
 		{
 			inserter: Inserter{
@@ -72,8 +71,8 @@ func TestInserterInsert(t *testing.T) {
 			insert: []item{
 				{pairs{{1, "a"}, {2, "b"}}, 1},
 			},
-			exp: map[uint][]Pair{
-				1: pairs{{2, "b"}, {1, "a"}},
+			exp: map[uint][]PairStr{
+				1: []PairStr{{2, "b"}, {1, "a"}},
 			},
 		},
 		{
@@ -86,10 +85,10 @@ func TestInserterInsert(t *testing.T) {
 				{pairs{{2, "b"}}, 3},
 				{pairs{}, 4},
 			},
-			exp: map[uint][]Pair{
-				1: pairs{{2, "b"}, {1, "a"}},
-				2: pairs{{1, "a"}},
-				3: pairs{{2, "b"}},
+			exp: map[uint][]PairStr{
+				1: []PairStr{{2, "b"}, {1, "a"}},
+				2: []PairStr{{1, "a"}},
+				3: []PairStr{{2, "b"}},
 				4: nil,
 			},
 		},
@@ -104,11 +103,11 @@ func TestInserterInsert(t *testing.T) {
 				{pairs{{3, "c"}, {1, "a"}, {2, "st"}}, 3},
 				{pairs{{3, "c"}, {1, "b"}, {2, "st"}}, 4},
 			},
-			exp: map[uint][]Pair{
-				1: pairs{{1, "a"}, {2, "st"}},
-				2: pairs{{1, "b"}, {2, "st"}},
-				3: pairs{{3, "c"}, {1, "a"}, {2, "st"}},
-				4: pairs{{3, "c"}, {1, "b"}, {2, "st"}},
+			exp: map[uint][]PairStr{
+				1: []PairStr{{1, "a"}, {2, "st"}},
+				2: []PairStr{{1, "b"}, {2, "st"}},
+				3: []PairStr{{3, "c"}, {1, "a"}, {2, "st"}},
+				4: []PairStr{{3, "c"}, {1, "b"}, {2, "st"}},
 			},
 		},
 	} {
@@ -117,11 +116,11 @@ func TestInserterInsert(t *testing.T) {
 		t.Run(label, func(t *testing.T) {
 			root := NewLeaf(nil, "root")
 			for _, op := range test.insert {
-				test.inserter.Insert(root, PathFromSliceBorrow(op.p), op.v)
+				test.inserter.Insert(root, PathFromSliceStr(op.p), op.v)
 			}
 
-			act := map[uint][]Pair{}
-			ForEach(root, Path{}, func(p []Pair, v uint) bool {
+			act := map[uint][]PairStr{}
+			ForEach(root, Path{}, func(p []PairStr, v uint) bool {
 				act[v] = p
 				return true
 			})
@@ -132,7 +131,7 @@ func TestInserterInsert(t *testing.T) {
 
 					expRoot := NewLeaf(nil, "root")
 					for v, p := range test.exp {
-						Inserter{}.ForceInsert(expRoot, p, v)
+						Inserter{}.ForceInsert(expRoot, PairStrToPair(p), v)
 					}
 					if err := graphviz.ShowLeaf(expRoot, label+"_exp"); err != nil {
 						t.Logf("could not open trie representation: %s", err)
@@ -199,12 +198,12 @@ func TestLookup(t *testing.T) {
 		t.Run(label, func(t *testing.T) {
 			root := NewLeaf(nil, "root")
 			for _, op := range test.insert {
-				(&Inserter{}).ForceInsert(root, op.p, op.v)
+				(&Inserter{}).ForceInsert(root, PairStrToPair(op.p), op.v)
 			}
 
 			for i, p := range test.lookup {
 				var value []uint
-				Lookup(root, PathFromSlice(p), LookupStrategyGreedy, func(leaf *Leaf) bool {
+				Lookup(root, PathFromSliceStr(p), LookupStrategyGreedy, func(leaf *Leaf) bool {
 					value = append(value, leaf.Data()...)
 					return true
 				})
@@ -228,7 +227,7 @@ func TestSelect(t *testing.T) {
 		lookup   []pairs
 		capture  []uint
 		strategy LookupStrategy
-		exp      map[uint]Path
+		exp      map[uint]Capture
 	}{
 		{
 			insert: []item{
@@ -240,8 +239,8 @@ func TestSelect(t *testing.T) {
 			},
 			capture:  []uint{2},
 			strategy: LookupStrategyGreedy,
-			exp: map[uint]Path{
-				1: PathFromSliceBorrow([]Pair{{2, "b"}}),
+			exp: map[uint]Capture{
+				1: Capture{2: "b"},
 			},
 		},
 		{
@@ -258,12 +257,12 @@ func TestSelect(t *testing.T) {
 			},
 			capture:  []uint{2},
 			strategy: LookupStrategyGreedy,
-			exp: map[uint]Path{
-				1: PathFromSliceBorrow([]Pair{{2, "b"}}),
-				2: PathFromSliceBorrow([]Pair{{2, "b"}}),
-				3: PathFromSliceBorrow([]Pair{{2, "b"}}),
-				4: PathFromSliceBorrow([]Pair{{2, "b"}}),
-				5: PathFromSliceBorrow([]Pair{{2, ""}}),
+			exp: map[uint]Capture{
+				1: Capture{2: "b"},
+				2: Capture{2: "b"},
+				3: Capture{2: "b"},
+				4: Capture{2: "b"},
+				5: Capture{2: ""},
 			},
 		},
 	} {
@@ -272,26 +271,22 @@ func TestSelect(t *testing.T) {
 		t.Run(label, func(t *testing.T) {
 			root := NewLeaf(nil, "root")
 			for _, op := range test.insert {
-				(&Inserter{}).ForceInsert(root, op.p, op.v)
+				(&Inserter{}).ForceInsert(root, PairStrToPair(op.p), op.v)
 			}
 
-			var c []Pair
-			for _, k := range test.capture {
-				c = append(c, Pair{Key: k})
-			}
-			capture := PathFromSlice(c)
+			capture := NewCapture(test.capture...)
 
 			for _, p := range test.lookup {
-				var trace = map[uint]Path{}
-				Select(root, PathFromSlice(p), capture, LookupStrategyGreedy, func(c Path, l *Leaf) bool {
+				var trace = map[uint]Capture{}
+				Select(root, PathFromSliceStr(p), capture, LookupStrategyGreedy, func(c Capture, l *Leaf) bool {
 					for _, v := range l.Data() {
 						trace[v] = c.Copy()
 					}
 					return true
 				})
 
-				for v, trace := range trace {
-					if exp := test.exp[v]; !trace.Equal(exp) {
+				for v, trc := range trace {
+					if exp := test.exp[v]; !reflect.DeepEqual(trc, exp) {
 						var buf bytes.Buffer
 						listing.DumpLeaf(&buf, root)
 
@@ -311,12 +306,12 @@ type countVisitor struct {
 	leafs int
 }
 
-func (c *countVisitor) OnNode(p []Pair, n *Node) bool { c.nodes++; return true }
-func (c *countVisitor) OnLeaf(p []Pair, l *Leaf) bool { c.leafs++; return true }
+func (c *countVisitor) OnNode(p []PairStr, n *Node) bool { c.nodes++; return true }
+func (c *countVisitor) OnLeaf(p []PairStr, l *Leaf) bool { c.leafs++; return true }
 
 func TestTrieDeleteCleanup(t *testing.T) {
 	trie := New(nil)
-	path := PathFromSlice(pairs{{1, "a"}, {2, "b"}})
+	path := PathFromSliceStr(pairs{{1, "a"}, {2, "b"}})
 
 	trie.Insert(path, 1)
 
@@ -386,18 +381,18 @@ func TestTrieInsertDelete(t *testing.T) {
 	} {
 		trie := New(test.config)
 		for _, op := range test.insert {
-			trie.Insert(PathFromSlice(op.p), op.v)
+			trie.Insert(PathFromSliceStr(op.p), op.v)
 		}
 
 		before := listing.DumpString(trie)
 
 		for _, del := range test.delete {
-			if del.ok != trie.Delete(PathFromSlice(del.p), del.v) {
+			if del.ok != trie.Delete(PathFromSliceStr(del.p), del.v) {
 				t.Errorf("[%d] Delete(%v, %v) = %v; want %v", i, del.p, del.v, !del.ok, del.ok)
 			}
 		}
 		var result []uint
-		trie.ForEach(Path{}, func(p []Pair, v uint) bool {
+		trie.ForEach(Path{}, func(p []PairStr, v uint) bool {
 			result = append(result, v)
 			return true
 		})
@@ -425,11 +420,15 @@ func listEq(a, b []uint) bool {
 	return true
 }
 
-func randStrn2(n, m int) []string {
+func randBts(n int) [][]byte {
+	return randBtsn(n, 8)
+}
+
+func randBtsn(n, m int) [][]byte {
 	dup := make(map[string]bool, n)
-	ret := make([]string, n)
-	b := make([]byte, m)
+	ret := make([][]byte, n)
 	for i := 0; i < n; i++ {
+		b := make([]byte, m)
 		for {
 			_, err := rand.Read(b)
 			if err != nil {
@@ -440,12 +439,16 @@ func randStrn2(n, m int) []string {
 			}
 			if !dup[string(b)] {
 				dup[string(b)] = true
-				ret[i] = string(b)
+				ret[i] = b
 				break
 			}
 		}
 	}
 	return ret
+}
+
+func randStr(n int) (ret []string) {
+	return randStrn(n, 8)
 }
 
 func randStrn(n, m int) (ret []string) {
@@ -468,170 +471,41 @@ func randStrn(n, m int) (ret []string) {
 	return
 }
 
-func randStr(n int) (ret []string) {
-	return randStrn2(n, 8)
-}
-
-func benchmarkInsert(b *testing.B, exists int) {
-	t := New(nil)
-	values := randStr(exists + 1)
-	for i := 0; i < exists; i++ {
-		t.Insert(PathFromSlice([]Pair{{1, values[i]}}), uint(i))
-	}
-	insert := values[len(values)-1]
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		for j := 0; j < len(insert); j++ {
-			t.Insert(PathFromSlice([]Pair{{1, insert}}), uint(exists))
-		}
-	}
-}
-
-func BenchmarkTrieInsert_0(b *testing.B)       { benchmarkInsert(b, 0) }
-func BenchmarkTrieInsert_1000(b *testing.B)    { benchmarkInsert(b, 1000) }
-func BenchmarkTrieInsert_100000(b *testing.B)  { benchmarkInsert(b, 100000) }
-func BenchmarkTrieInsert_1000000(b *testing.B) { benchmarkInsert(b, 1000000) }
-
-func fill(t *Trie, path []Pair, d, n, v int, values []string, ret *[]item_p, k *int, m int, val *uint) {
-	if d == 0 {
-		return
-	}
-	for i := 0; i < n; i++ {
-		for j := 0; j < v; j++ {
-			np := append(path, Pair{uint(m + i), values[*k]})
-			ps := PathFromSlice(np)
-			t.Insert(ps, *val)
-			if d == 1 {
-				*ret = append(*ret, item_p{ps, *val})
-			}
-			*k++
-			*val++
-			fill(t, np, d-1, n, v, values, ret, k, (m+i+j)*int(math.Pow(10, float64(i+1))), val)
-		}
-	}
-}
-
-func trieSize(d, n, v int) int {
-	s := n * v
-	for i := 1; i < d; i++ {
-		s *= n * v
-	}
-	return s
-}
-
-func genTrie(d, n, v int) (*Trie, []item_p) {
-	leafs := trieSize(d, n, v)
-	values := randStr(leafs)
-	t := New(nil)
-	r := make([]item_p, 0)
-	fill(t, nil, d, n, v, values, &r, new(int), 1, new(uint))
-	return t, r
-}
-
-func genTries(count, d, n, v int) (ret []*Trie, del [][]item_p) {
-	for i := 0; i < count; i++ {
-		t, r := genTrie(d, n, v)
-		ret = append(ret, t)
-		del = append(del, r)
-	}
-	return
-}
-
-func benchmarkLookup(b *testing.B, d, n, v int) {
-}
-
-func benchmarkDelete(b *testing.B, d, n, v int) {
-	var trie *Trie
-	var del []item_p
-	for i := 0; i < b.N; i++ {
-		if len(del) == 0 {
-			b.StopTimer()
-			trie, del = genTrie(d, n, v)
-			b.StartTimer()
-		}
-		item := del[len(del)-1]
-		del = del[:len(del)-1]
-		if !trie.Delete(item.p, item.v) {
-			b.Fatalf("could not delete item: %v %v", item.p.String(), item.v)
-		}
-	}
-}
-
-//func BenchmarkMap(b *testing.B) {
-//	m := make(map[string]int, 1000)
-//	s := randStrn(1000, 16)
-//	for i := 0; i < 1000; i++ {
-//		m[s[i]] = i
-//	}
-//	b.ResetTimer()
-//	for i := 0; i < b.N; i++ {
-//		_ = m[s[i%1000]]
-//	}
-//}
-
-func BenchmarkTrieDelete_1_1_100(b *testing.B)     { benchmarkDelete(b, 1, 1, 100) }
-func BenchmarkTrieDelete_1_1_1000(b *testing.B)    { benchmarkDelete(b, 1, 1, 1000) }
-func BenchmarkTrieDelete_1_1_10000(b *testing.B)   { benchmarkDelete(b, 1, 1, 10000) }
-func BenchmarkTrieDelete_1_1_1000000(b *testing.B) { benchmarkDelete(b, 1, 1, 1000000) }
-
-type lookupBench struct {
-	depth, nodes, values int
-}
-
-var lookupBenches = []lookupBench{
-	{1, 1, 100},
-	{1, 1, 1000},
-	{1, 1, 10000},
-	{1, 1, 1000000},
-}
-
-func BenchmarkTrieLookup(b *testing.B) {
-	for _, bench := range lookupBenches {
-		b.Run(fmt.Sprintf("%d_%d_%d", bench.depth, bench.nodes, bench.values), func(b *testing.B) {
-			trie, deepest := genTrie(bench.depth, bench.nodes, bench.values)
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				item := deepest[i%len(deepest)]
-				trie.LookupGreedy(item.p, func(v uint) bool { return true })
-			}
-		})
-	}
-}
-
 func TestTrieSelect(t *testing.T) {
 	trie := New(&TrieConfig{
 		NodeOrder: []uint{1, 2, 3},
 	})
 
-	trie.Insert(PathFromMap(map[uint]string{1: "a"}), 0xff01)
-	trie.Insert(PathFromMap(map[uint]string{3: "b"}), 0xff02)
-	trie.Insert(PathFromMap(map[uint]string{3: "c"}), 0xff03)
-	trie.Insert(PathFromMap(map[uint]string{1: "a", 3: "b"}), 0xbb01)
-	trie.Insert(PathFromMap(map[uint]string{1: "a", 3: "c"}), 0xbb02)
+	trie.Insert(PathFromMapStr(map[uint]string{1: "a"}), 0xff01)
+	trie.Insert(PathFromMapStr(map[uint]string{3: "b"}), 0xff02)
+	trie.Insert(PathFromMapStr(map[uint]string{3: "c"}), 0xff03)
+	trie.Insert(PathFromMapStr(map[uint]string{1: "a", 3: "b"}), 0xbb01)
+	trie.Insert(PathFromMapStr(map[uint]string{1: "a", 3: "c"}), 0xbb02)
 
 	for i := 0; i < 2; i++ {
 		k := "key" + strconv.FormatInt(int64(i), 16)
-		trie.Insert(PathFromMap(map[uint]string{1: "a", 2: k, 3: "b"}), uint(i))
+		trie.Insert(PathFromMapStr(map[uint]string{1: "a", 2: k, 3: "b"}), uint(i))
 	}
 	for i := 2; i < 4; i++ {
 		k := "key" + strconv.FormatInt(int64(i), 16)
-		trie.Insert(PathFromMap(map[uint]string{1: "a", 2: k, 3: "c"}), uint(i))
+		trie.Insert(PathFromMapStr(map[uint]string{1: "a", 2: k, 3: "c"}), uint(i))
 	}
 
-	lookup := PathFromMap(map[uint]string{1: "a", 3: "c"})
-	capture := PathFromMap(map[uint]string{2: ""})
+	lookup := PathFromMapStr(map[uint]string{1: "a", 3: "c"})
+
+	capture := Capture{2: ""}
 
 	expStrict := map[string]uint{
-		PathFromMap(map[uint]string{2: "key2"}).String(): 2,
-		PathFromMap(map[uint]string{2: "key3"}).String(): 3,
-		PathFromMap(map[uint]string{2: ""}).String():     0xbb02,
+		Capture{2: "key2"}.String(): 2,
+		Capture{2: "key3"}.String(): 3,
+		Capture{2: ""}.String():     0xbb02,
 	}
 	expGreedy := map[string]uint{
-		PathFromMap(map[uint]string{2: "key2"}).String(): 2,
-		PathFromMap(map[uint]string{2: "key3"}).String(): 3,
-		PathFromMap(map[uint]string{2: ""}).String():     0xbb02,
-		PathFromMap(map[uint]string{2: ""}).String():     0xff01,
-		PathFromMap(map[uint]string{2: ""}).String():     0xff03,
+		Capture{2: "key2"}.String(): 2,
+		Capture{2: "key3"}.String(): 3,
+		Capture{2: ""}.String():     0xbb02,
+		Capture{2: ""}.String():     0xff01,
+		Capture{2: ""}.String():     0xff03,
 	}
 
 	actStrict := map[string]uint{}
@@ -639,61 +513,19 @@ func TestTrieSelect(t *testing.T) {
 
 	fmt.Println(listing.DumpString(trie))
 
-	trie.SelectStrict(lookup, capture.Copy(), func(c Path, v uint) bool { actStrict[c.String()] = v; return true })
-	trie.SelectGreedy(lookup, capture.Copy(), func(c Path, v uint) bool { actGreedy[c.String()] = v; return true })
+	trie.SelectStrict(lookup, capture, func(c Capture, v uint) bool { actStrict[c.String()] = v; return true })
+	trie.SelectGreedy(lookup, capture, func(c Capture, v uint) bool { actGreedy[c.String()] = v; return true })
 
 	if !reflect.DeepEqual(actStrict, expStrict) {
 		t.Errorf(
-			"unexpected strict results:\n\tlookup: %#v; capture %#v;\n\t%#v;\n\twant:\n\t%#v",
+			"unexpected strict results:\n\tlookup: %#q; capture %#q;\n\t%#v;\n\twant:\n\t%#v",
 			lookup.String(), capture.String(), actStrict, expStrict,
 		)
 	}
 	if !reflect.DeepEqual(actGreedy, expGreedy) {
 		t.Errorf(
-			"unexpected greedy results:\n\tlookup: %#v; capture %#v;\n\t%#v;\n\twant:\n\t%#v",
+			"unexpected greedy results:\n\tlookup: %#q; capture %#q;\n\t%#v;\n\twant:\n\t%#v",
 			lookup.String(), capture.String(), actGreedy, expGreedy,
 		)
-	}
-}
-
-func BenchmarkTrieSelectStrict(b *testing.B) {
-	for _, test := range []struct {
-		items   int
-		capture int
-	}{
-		{items: 1, capture: 1},
-		{items: 4, capture: 1},
-		{items: 16, capture: 1},
-		{items: 64, capture: 1},
-		{items: 256, capture: 1},
-	} {
-		b.Run(fmt.Sprintf("i%dc%d", test.items, test.capture), func(b *testing.B) {
-			trie := New(nil)
-
-			cm := make(map[uint]string)
-			for j := 0; j < test.capture; j++ {
-				cm[uint(j+2)] = ""
-			}
-
-			capture := PathFromMap(cm)
-			lookup := PathFromMap(map[uint]string{1: "a", uint(test.capture + 2): "b"})
-
-			for i := 0; i < test.items; i++ {
-				prefix := "key" + strconv.FormatInt(int64(i), 16)
-				mp := map[uint]string{
-					1: "a",
-					uint(test.capture + 2): "b",
-				}
-				for j := 0; j < test.capture; j++ {
-					mp[uint(j+2)] = prefix + "_" + strconv.FormatInt(int64(j), 16)
-				}
-				trie.Insert(PathFromMap(mp), uint(i))
-			}
-
-			b.ResetTimer()
-			for i := 0; i < b.N; i++ {
-				trie.SelectStrict(lookup, capture, func(c Path, _ uint) bool { return true })
-			}
-		})
 	}
 }

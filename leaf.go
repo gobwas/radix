@@ -298,10 +298,7 @@ func (c Inserter) makeTree(p Path, v uint) *Node {
 	if !ok {
 		panic("could not make tree with empty path")
 	}
-	cn := &Node{
-		key: last.Key,
-		val: last.Value,
-	}
+	cn := &Node{key: last.Key}
 	cl := cn.GetsertLeaf(last.Value)
 	cl.Append(v)
 
@@ -311,10 +308,7 @@ func (c Inserter) makeTree(p Path, v uint) *Node {
 	}
 
 	p.Descend(cur, func(p Pair) bool {
-		n := &Node{
-			key: p.Key,
-			val: p.Value,
-		}
+		n := &Node{key: p.Key}
 		l := n.GetsertLeaf(p.Value)
 		l.AddChild(cn)
 
