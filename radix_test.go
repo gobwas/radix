@@ -639,14 +639,20 @@ func TestTrieSelect(t *testing.T) {
 
 	fmt.Println(listing.DumpString(trie))
 
-	trie.SelectStrict(lookup, capture, func(c Path, v uint) bool { actStrict[c.String()] = v; return true })
-	trie.SelectGreedy(lookup, capture, func(c Path, v uint) bool { actGreedy[c.String()] = v; return true })
+	trie.SelectStrict(lookup, capture.Copy(), func(c Path, v uint) bool { actStrict[c.String()] = v; return true })
+	trie.SelectGreedy(lookup, capture.Copy(), func(c Path, v uint) bool { actGreedy[c.String()] = v; return true })
 
 	if !reflect.DeepEqual(actStrict, expStrict) {
-		t.Errorf("unexpected strict results:\n\t%#v;\n\twant:\n\t%#v", actStrict, expStrict)
+		t.Errorf(
+			"unexpected strict results:\n\tlookup: %#v; capture %#v;\n\t%#v;\n\twant:\n\t%#v",
+			lookup.String(), capture.String(), actStrict, expStrict,
+		)
 	}
 	if !reflect.DeepEqual(actGreedy, expGreedy) {
-		t.Errorf("unexpected strict results:\n\t%#v;\n\twant:\n\t%#v", actGreedy, expGreedy)
+		t.Errorf(
+			"unexpected greedy results:\n\tlookup: %#v; capture %#v;\n\t%#v;\n\twant:\n\t%#v",
+			lookup.String(), capture.String(), actGreedy, expGreedy,
+		)
 	}
 }
 
