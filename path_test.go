@@ -103,20 +103,40 @@ var sizes = []int{2, 4, 6, 8, 10, 16, 32}
 
 func BenchmarkPathBuilder(b *testing.B) {
 	for _, size := range sizes {
-		b.Run(fmt.Sprintf("%d", size), func(b *testing.B) {
-			m := make(map[uint]string, size)
-			s := randStr(size)
-			for i := 0; i < size; i++ {
-				m[uint(i)] = s[i]
-			}
-			b.ResetTimer()
+		m := make(map[uint]string, size)
+		s := randStr(size)
+		for i := 0; i < size; i++ {
+			m[uint(i)] = s[i]
+		}
 
+		b.Run(fmt.Sprintf("%d", size), func(b *testing.B) {
 			for i := 0; i < b.N; i++ {
 				builder := NewPathBuilder(size)
 				for key, value := range m {
 					builder.Add(key, value)
 				}
 				_ = builder.Build()
+			}
+		})
+	}
+}
+
+func BenchmarkPathBuilderReuse(b *testing.B) {
+	for _, size := range sizes {
+		m := make(map[uint]string, size)
+		s := randStr(size)
+		for i := 0; i < size; i++ {
+			m[uint(i)] = s[i]
+		}
+
+		b.Run(fmt.Sprintf("%d", size), func(b *testing.B) {
+			for i := 0; i < b.N; i++ {
+				builder := GetPathBuilder(size)
+				for key, value := range m {
+					builder.Add(key, value)
+				}
+				_ = builder.Build()
+				PutPathBuilder(builder)
 			}
 		})
 	}

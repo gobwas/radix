@@ -2,32 +2,49 @@ package radix
 
 //go:generate ppgo
 
-import "fmt"
+import (
+	"fmt"
+	"sync"
+)
 
 type Pair struct {
 	Key   uint
 	Value string
 }
 
+var pairsPool [MaxPathSize]sync.Pool
+
 type PathBuilder struct {
-	size  int
 	pairs []Pair
+}
+
+func GetPathBuilder(n int) *PathBuilder {
+	if pb, _ := pairsPool[n-1].Get().(*PathBuilder); pb != nil {
+		return pb
+	}
+	return NewPathBuilder(n)
+}
+
+func PutPathBuilder(pb *PathBuilder) {
+	for i := range pb.pairs {
+		pb.pairs[i] = Pair{}
+	}
+	pb.pairs = pb.pairs[:0]
+	pairsPool[cap(pb.pairs)-1].Put(pb)
 }
 
 // NewPathBuilder creates PathBuilder with n capacity of pairs.
 func NewPathBuilder(n int) *PathBuilder {
 	return &PathBuilder{
-		pairs: make([]Pair, n),
+		pairs: make([]Pair, 0, n),
 	}
 }
 
 func (p *PathBuilder) Add(k uint, v string) {
-	p.pairs[p.size] = Pair{k, v}
-	p.size++
+	p.pairs = append(p.pairs, Pair{k, v})
 }
 
 func (p *PathBuilder) Build() (ret Path) {
-	p.pairs = p.pairs[:p.size]
 	return PathFromSliceBorrow(p.pairs)
 }
 
