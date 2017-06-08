@@ -243,8 +243,8 @@ func Lookup(lf *Leaf, query Path, s LookupStrategy, it LeafIterator) bool {
 			return false
 		}
 	}
-	min, max := query.Min(), query.Max()
-	return lf.AscendChildrenRange(min.Key, max.Key, func(n *Node) bool {
+
+	handle := func(n *Node) bool {
 		if v, ok := query.Get(n.key); ok {
 			leaf := n.GetLeaf(v)
 			if leaf != nil {
@@ -252,7 +252,21 @@ func Lookup(lf *Leaf, query Path, s LookupStrategy, it LeafIterator) bool {
 			}
 		}
 		return true
-	})
+	}
+
+	switch query.Len() {
+	case 1:
+		key, _ := query.FirstKey()
+		if n := lf.GetChild(key); n != nil {
+			return handle(n)
+		}
+		fallthrough
+	case 0:
+		return true
+	}
+
+	min, max := query.KeyRange()
+	return lf.AscendChildrenRange(min, max, handle)
 }
 
 type Visitor interface {
@@ -341,8 +355,8 @@ func (self leafVisitor) OnLeaf(p []Pair, l *Leaf) bool {
 func (leafVisitor) OnNode(_ []Pair, _ *Node) bool { return true }
 
 func search(lf *Leaf, path Path) (ret []*Node) {
-	min, max := path.Min(), path.Max()
-	lf.AscendChildrenRange(min.Key, max.Key, func(n *Node) bool {
+	min, max := path.KeyRange()
+	lf.AscendChildrenRange(min, max, func(n *Node) bool {
 		if v, ok := path.Get(n.key); ok {
 			if path.Len() == 1 {
 				ret = append(ret, n)

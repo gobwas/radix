@@ -235,20 +235,33 @@ func (c Inserter) Insert(leaf *Leaf, path Path, value uint) bool {
 	}
 
 	for path.Len() > 0 {
+		// Get the cursor of path begining.
+		cur := path.Begin()
+
 		// First try to find an existance of any path key in leaf children.
 		// Due to the trie usage pattern, it is probably exists already.
 		// If we do just lookup, leaf will not be locked for other goroutine lookups.
 		// When we decided to insert new node to the leaf, we do the same thing, except
 		// the locking leaf for lookups and other writes.
-		n, ok := leaf.GetAny(path.AscendKeyIterator())
+		n, ok := leaf.GetAny(func() (key uint, ok bool) {
+			cur, key, ok = path.NextKey(cur)
+			return
+		})
 		if !ok {
+			cur = path.Begin() // Reset cursor.
+
 			var insert bool
-			n = leaf.GetsertAny(path.AscendKeyIterator(), func() *Node {
-				insert = true
-				n := c.makeTree(path, value)
-				n.parent = leaf
-				return n
-			})
+			n = leaf.GetsertAny(
+				func() (key uint, ok bool) {
+					cur, key, ok = path.NextKey(cur)
+					return
+				},
+				func() *Node {
+					insert = true
+					n := c.makeTree(path, value)
+					n.parent = leaf
+					return n
+				})
 			if insert {
 				return true
 			}
@@ -281,7 +294,7 @@ func (c Inserter) ForceInsert(leaf *Leaf, pairs []Pair, value uint) {
 }
 
 func (c Inserter) makeTree(p Path, v uint) *Node {
-	last, cur, ok := p.Last()
+	cur, last, ok := p.Last()
 	if !ok {
 		panic("could not make tree with empty path")
 	}
