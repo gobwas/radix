@@ -208,6 +208,10 @@ func Select(lf *Leaf, query, capture Path, s LookupStrategy, it PathLeafIterator
 		//      |         |--b
 		//      |-- 2
 		//          |--c
+		//
+		// That is, when we looking up for items with {2:b} query and capturing
+		// {1:""}, then we receive {1:a} for "item1" and {1:a} for "item2", but
+		// we want {1:""} for item2.
 		set := capture.Has(n.key)
 		var cp Path
 		if set {
