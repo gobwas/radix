@@ -80,7 +80,7 @@ func TestPathFirst(t *testing.T) {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
 			p := PathFromSliceBorrow(test.data)
 
-			f, _, ok := p.First()
+			_, f, ok := p.First()
 			if !ok {
 				t.Errorf("expected First() to return true, but got false")
 			}
@@ -88,7 +88,7 @@ func TestPathFirst(t *testing.T) {
 				t.Errorf("First() = %v; want %v", f, test.first)
 			}
 
-			l, _, ok := p.Last()
+			_, l, ok := p.Last()
 			if !ok {
 				t.Errorf("expected Last() to return true, but got false")
 			}
@@ -160,7 +160,11 @@ func BenchmarkPathAscendKeyIterator(b *testing.B) {
 		b.ResetTimer()
 
 		for i := 0; i < b.N; i++ {
-			doSomeFunc(path.AscendKeyIterator())
+			p := path.Begin()
+			doSomeFunc(func() (key uint, ok bool) {
+				p, key, ok = path.NextKey(p)
+				return
+			})
 		}
 	}
 }
