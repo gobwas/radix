@@ -61,7 +61,7 @@ func (n *Node) InsertLeaf(k string, l *Leaf) {
 	var has bool
 	n.mu.Lock()
 	if n.values == nil {
-		n.values = make(map[string]*Leaf)
+		n.values = make(map[string]*Leaf, 1)
 	} else {
 		_, has = n.values[k]
 	}
@@ -82,7 +82,7 @@ func (n *Node) GetsertLeaf(k string) (ret *Leaf) {
 		return
 	}
 	if n.values == nil {
-		n.values = make(map[string]*Leaf)
+		n.values = make(map[string]*Leaf, 1)
 	}
 	ret = NewLeaf(n, k)
 	n.values[k] = ret
