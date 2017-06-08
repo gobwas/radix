@@ -168,9 +168,11 @@ const (
 // If it founds node with key, that is not present in query, it begins to
 // traverse all it childs (leafs).
 //
-// At every traverse iteration it fills path with pairs that are not listen in
+// At every traverse iteration it fills path with pairs that are not listed in
 // query and are listed in capture. This path is passed as argument to the
 // given iterator.
+//
+// Note that path (capture) passed to it is only valid until it returns.
 //
 // If you have query with all keys of trie, you could use Lookup,
 // that is more efficient.
@@ -198,8 +200,9 @@ func Select(lf *Leaf, query, capture Path, s LookupStrategy, it PathLeafIterator
 			return true
 		}
 
-		// Must copy capture with node's key. That is done to prevent bugs when
-		// node with some key is present in multiple places:
+		// Must reset capture with previous value after scanning current node.
+		// That is done to prevent bugs when node with some key is present in
+		// multiple places:
 		//
 		// -- root
 		//      |-- 1
@@ -212,19 +215,18 @@ func Select(lf *Leaf, query, capture Path, s LookupStrategy, it PathLeafIterator
 		// That is, when we looking up for items with {2:b} query and capturing
 		// {1:""}, then we receive {1:a} for "item1" and {1:a} for "item2", but
 		// we want {1:""} for item2.
-		set := capture.Has(n.key)
-		var cp Path
-		if set {
-			cp = capture.Copy()
-		} else {
-			cp = capture
-		}
-		return n.AscendLeafs(func(v string, leaf *Leaf) bool {
+		prev, set := capture.Get(n.key)
+		r := n.AscendLeafs(func(v string, leaf *Leaf) bool {
 			if set {
-				cp.Set(n.key, v)
+				capture.Set(n.key, v)
 			}
-			return Select(leaf, query, cp, s, it)
+			return Select(leaf, query, capture, s, it)
 		})
+		if set {
+			// Reset capture to a previous value.
+			capture.Set(n.key, prev)
+		}
+		return r
 	})
 }
 

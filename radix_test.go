@@ -267,7 +267,7 @@ func TestSelect(t *testing.T) {
 			},
 		},
 	} {
-		label := fmt.Sprintf("Select#%d", i)
+		label := fmt.Sprintf("#%d", i)
 
 		t.Run(label, func(t *testing.T) {
 			root := NewLeaf(nil, "root")
@@ -285,20 +285,20 @@ func TestSelect(t *testing.T) {
 				var trace = map[uint]Path{}
 				Select(root, PathFromSlice(p), capture, LookupStrategyGreedy, func(c Path, l *Leaf) bool {
 					for _, v := range l.Data() {
-						trace[v] = c
+						trace[v] = c.Copy()
 					}
 					return true
 				})
 
 				for v, trace := range trace {
 					if exp := test.exp[v]; !trace.Equal(exp) {
+						var buf bytes.Buffer
+						listing.DumpLeaf(&buf, root)
+
 						t.Errorf(
-							"[%d] Select(%v) returned %v with %v trace; want %v",
-							i, p, v, trace, exp,
+							"[%d] Select(%v) returned %#q with capture %#q; want %#q;\nTrie:\n%s\n",
+							i, p, v, trace, exp, buf.String(),
 						)
-						if err := graphviz.ShowLeaf(root, label); err != nil {
-							t.Logf("could not open trie representation: %s", err)
-						}
 					}
 				}
 			}
