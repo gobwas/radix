@@ -55,8 +55,12 @@ func (t *Trie) InsertTo(leaf *Leaf, p Path, v uint) bool {
 	return t.inserter.Insert(leaf, p, v)
 }
 
-func (t *Trie) Delete(path Path, v uint) (ok bool) {
-	Lookup(t.root, path, LookupStrategyStrict, func(l *Leaf) bool {
+func (t *Trie) Delete(p Path, v uint) bool {
+	return t.DeleteFrom(t.root, p, v)
+}
+
+func (t *Trie) DeleteFrom(leaf *Leaf, p Path, v uint) (ok bool) {
+	Lookup(leaf, p, LookupStrategyStrict, func(l *Leaf) bool {
 		if l.Remove(v) {
 			ok = true
 			cleanupBottomTop(l)
