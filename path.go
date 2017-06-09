@@ -30,6 +30,13 @@ type PathBuilder struct {
 	pairs []Pair
 }
 
+func (p *PathBuilder) Reset() {
+	for i := range p.pairs {
+		p.pairs[i] = Pair{}
+	}
+	p.pairs = p.pairs[:0]
+}
+
 func GetPathBuilder(n int) *PathBuilder {
 	if pb, _ := pairsPool[n-1].Get().(*PathBuilder); pb != nil {
 		return pb
@@ -38,10 +45,7 @@ func GetPathBuilder(n int) *PathBuilder {
 }
 
 func PutPathBuilder(pb *PathBuilder) {
-	for i := range pb.pairs {
-		pb.pairs[i] = Pair{}
-	}
-	pb.pairs = pb.pairs[:0]
+	pb.Reset()
 	pairsPool[cap(pb.pairs)-1].Put(pb)
 }
 
