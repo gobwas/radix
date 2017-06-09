@@ -41,10 +41,18 @@ func New(config *TrieConfig) *Trie {
 }
 
 func (t *Trie) Insert(p Path, v uint) bool {
+	return t.InsertTo(t.root, p, v)
+}
+
+func (t *Trie) At(p Path) *Leaf {
+	return t.inserter.GetLeaf(t.root, p)
+}
+
+func (t *Trie) InsertTo(leaf *Leaf, p Path, v uint) bool {
 	if p.Len() == 0 {
-		return t.root.Append(v)
+		return leaf.Append(v)
 	}
-	return t.inserter.Insert(t.root, p, v)
+	return t.inserter.Insert(leaf, p, v)
 }
 
 func (t *Trie) Delete(path Path, v uint) (ok bool) {

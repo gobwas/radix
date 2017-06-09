@@ -222,6 +222,18 @@ type Inserter struct {
 //
 // It returns true if value was not present in target leaf's values.
 func (c Inserter) Insert(leaf *Leaf, path Path, value uint) bool {
+	_, ok := c.insert(leaf, path, value, true)
+	return ok
+}
+
+// GetLeaf returns Leaf after given root by given path.
+// If path is empty root leaf is returned.
+func (c Inserter) GetLeaf(leaf *Leaf, path Path) *Leaf {
+	leaf, _ = c.insert(leaf, path, 0, false)
+	return leaf
+}
+
+func (c Inserter) insert(leaf *Leaf, path Path, value uint, insert bool) (*Leaf, bool) {
 	// First we should save the fixed order of nodes.
 	for _, key := range c.NodeOrder {
 		if val, ok := path.Get(key); ok {
@@ -250,20 +262,20 @@ func (c Inserter) Insert(leaf *Leaf, path Path, value uint) bool {
 		if !ok {
 			cur = path.Begin() // Reset cursor.
 
-			var insert bool
+			var bottomLeaf *Leaf
 			n = leaf.GetsertAny(
 				func() (key uint, ok bool) {
 					cur, key, ok = path.NextKey(cur)
 					return
 				},
-				func() *Node {
-					insert = true
-					n := c.makeTree(path, value)
+				func() (n *Node) {
+					n, bottomLeaf = c.makeTree(path, value, insert)
 					n.parent = leaf
 					return n
-				})
-			if insert {
-				return true
+				},
+			)
+			if bottomLeaf != nil {
+				return bottomLeaf, true
 			}
 		}
 		v, ok := path.Get(n.key)
@@ -274,7 +286,11 @@ func (c Inserter) Insert(leaf *Leaf, path Path, value uint) bool {
 		path = path.Without(n.key)
 	}
 
-	return leaf.Append(value)
+	var ok bool
+	if insert {
+		ok = leaf.Append(value)
+	}
+	return leaf, ok
 }
 
 // ForceInsert inserts value to the leaf that exists (or not and will be
@@ -293,14 +309,17 @@ func (c Inserter) ForceInsert(leaf *Leaf, pairs []Pair, value uint) {
 	leaf.Append(value)
 }
 
-func (c Inserter) makeTree(p Path, v uint) *Node {
+func (c Inserter) makeTree(p Path, v uint, insert bool) (topNode *Node, bottomLeaf *Leaf) {
 	cur, last, ok := p.Last()
 	if !ok {
 		panic("could not make tree with empty path")
 	}
 	cn := &Node{key: last.Key}
 	cl := cn.GetsertLeaf(last.Value)
-	cl.Append(v)
+	if insert {
+		cl.Append(v)
+	}
+	bottomLeaf = cl
 
 	cb := c.IndexNode
 	if cb != nil {
@@ -318,7 +337,8 @@ func (c Inserter) makeTree(p Path, v uint) *Node {
 		cn, cl = n, l
 		return true
 	})
-	return cn
+
+	return cn, bottomLeaf
 }
 
 // Int implements the Item interface for integers.

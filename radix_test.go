@@ -48,13 +48,141 @@ func TestTrieInsert(t *testing.T) {
 			trie.Insert(PathFromSliceStr(test.insert), v)
 		}
 		var data []uint
-		trie.ForEach(Path{}, func(p []PairStr, v uint) bool {
+		trie.LookupStrict(PathFromSliceStr(test.insert), func(v uint) bool {
 			data = append(data, v)
 			return true
 		})
 		if !listEq(data, test.values) {
 			t.Errorf("[%d] leaf values is %v; want %v", i, data, test.values)
 		}
+	}
+}
+
+func TestTrieInsertTo(t *testing.T) {
+	for i, test := range []struct {
+		root   pairs
+		insert pairs
+		values []uint
+	}{
+		{
+			root:   pairs{{1, "a"}, {2, "b"}},
+			insert: pairs{{3, "c"}, {4, "d"}},
+			values: []uint{1, 2, 3, 4},
+		},
+	} {
+		trie := New(nil)
+		root := trie.At(PathFromSliceStr(test.root))
+
+		for _, v := range test.values {
+			trie.InsertTo(root, PathFromSliceStr(test.insert), v)
+		}
+		var data []uint
+		trie.LookupStrict(
+			PathFromSliceStr(append(test.root, test.insert...)),
+			func(v uint) bool {
+				data = append(data, v)
+				return true
+			},
+		)
+		if !listEq(data, test.values) {
+			t.Errorf(
+				"[%d] leaf values is %v; want %v\nTrie:\n%s\n",
+				i, data, test.values, listing.DumpString(trie),
+			)
+		}
+	}
+}
+
+func pairsMaker(total int) func(n int) []Pair {
+	values := randBtsn(total, 16)
+	var (
+		key   uint
+		index int
+	)
+	return func(n int) []Pair {
+		ret := make([]Pair, n)
+		for i := range ret {
+			ret[i] = Pair{
+				Key:   key,
+				Value: values[index],
+			}
+			key++
+			index++
+		}
+		return ret
+	}
+}
+
+func getPartedPaths(size, suffixSize, count int) (prefix Path, suffix, full []Path) {
+	prefixSize := size - suffixSize
+	if prefixSize < 0 {
+		panic("size of full path is less that suffix")
+	}
+
+	makePairs := pairsMaker(prefixSize + (suffixSize * count))
+
+	prefixPairs := makePairs(prefixSize)
+	suffixes := make([][]Pair, count)
+	for i := range suffixes {
+		suffixes[i] = makePairs(suffixSize)
+	}
+
+	full = make([]Path, count)
+	suffix = make([]Path, count)
+	for i, suffixPairs := range suffixes {
+		suffix[i] = PathFromSlice(suffixPairs)
+		full[i] = PathFromSlice(append(prefixPairs, suffixPairs...))
+	}
+
+	prefix = PathFromSlice(prefixPairs)
+
+	return
+}
+
+var insertCases = []struct {
+	path   int
+	suffix int
+	n      int
+}{
+	{3, 1, 4},
+}
+
+func BenchmarkTrieInsert(b *testing.B) {
+	for _, test := range insertCases {
+		b.Run(fmt.Sprintf("prefix=%d", test.path-test.suffix), func(b *testing.B) {
+			_, _, full := getPartedPaths(test.path, test.suffix, test.n)
+
+			var trie *Trie
+			for i := 0; i < b.N/test.n; i++ {
+				b.StopTimer()
+				trie = New(nil)
+				b.StartTimer()
+
+				for j, path := range full {
+					trie.Insert(path, uint(j))
+				}
+			}
+		})
+	}
+}
+
+func BenchmarkTrieInsertTo(b *testing.B) {
+	for _, test := range insertCases {
+		b.Run(fmt.Sprintf("prefix=%d", test.path-test.suffix), func(b *testing.B) {
+			prefix, suffixes, _ := getPartedPaths(test.path, test.suffix, test.n)
+
+			var trie *Trie
+			for i := 0; i < b.N/test.n; i++ {
+				b.StopTimer()
+				trie = New(nil)
+				b.StartTimer()
+
+				root := trie.At(prefix)
+				for j, suffix := range suffixes {
+					trie.InsertTo(root, suffix, uint(j))
+				}
+			}
+		})
 	}
 }
 
