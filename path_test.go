@@ -28,7 +28,7 @@ func TestPathRemove(t *testing.T) {
 		},
 	} {
 		t.Run("", func(t *testing.T) {
-			p := PathFromMap(test.data)
+			p := PathFromMapStr(test.data)
 			for k := range test.exclude {
 				p = p.Without(k)
 			}
@@ -51,7 +51,7 @@ func TestPathRemove(t *testing.T) {
 					t.Errorf("path does not have included key %#x", k)
 
 				default:
-					if act, _ := p.Get(k); act != exp {
+					if act, _ := p.Get(k); string(act) != exp {
 						t.Errorf("unexpected %#x key value: %q; want %q", k, act, exp)
 					}
 				}
@@ -62,29 +62,29 @@ func TestPathRemove(t *testing.T) {
 
 func TestPathFirst(t *testing.T) {
 	for i, test := range []struct {
-		data  []Pair
+		data  []PairStr
 		first Pair
 		last  Pair
 	}{
 		{
-			data: []Pair{
+			data: []PairStr{
 				{3, "d"},
 				{1, "b"},
 				{2, "c"},
 				{0, "a"},
 			},
-			first: Pair{0, "a"},
-			last:  Pair{3, "d"},
+			first: Pair{0, []byte("a")},
+			last:  Pair{3, []byte("d")},
 		},
 	} {
 		t.Run(fmt.Sprintf("%d", i), func(t *testing.T) {
-			p := PathFromSliceBorrow(test.data)
+			p := PathFromSliceStr(test.data)
 
 			_, f, ok := p.First()
 			if !ok {
 				t.Errorf("expected First() to return true, but got false")
 			}
-			if f != test.first {
+			if !f.Equal(test.first) {
 				t.Errorf("First() = %v; want %v", f, test.first)
 			}
 
@@ -92,7 +92,7 @@ func TestPathFirst(t *testing.T) {
 			if !ok {
 				t.Errorf("expected Last() to return true, but got false")
 			}
-			if l != test.last {
+			if !l.Equal(test.last) {
 				t.Errorf("Last() = %v; want %v", l, test.first)
 			}
 		})
@@ -103,8 +103,8 @@ var sizes = []int{2, 4, 6, 8, 10, 16, 32}
 
 func BenchmarkPathBuilder(b *testing.B) {
 	for _, size := range sizes {
-		m := make(map[uint]string, size)
-		s := randStr(size)
+		m := make(map[uint][]byte, size)
+		s := randBts(size)
 		for i := 0; i < size; i++ {
 			m[uint(i)] = s[i]
 		}
@@ -123,8 +123,8 @@ func BenchmarkPathBuilder(b *testing.B) {
 
 func BenchmarkPathBuilderReuse(b *testing.B) {
 	for _, size := range sizes {
-		m := make(map[uint]string, size)
-		s := randStr(size)
+		m := make(map[uint][]byte, size)
+		s := randBts(size)
 		for i := 0; i < size; i++ {
 			m[uint(i)] = s[i]
 		}
@@ -145,8 +145,8 @@ func BenchmarkPathBuilderReuse(b *testing.B) {
 func BenchmarkPathFromMap(b *testing.B) {
 	for _, size := range sizes {
 		b.Run(fmt.Sprintf("%d", size), func(b *testing.B) {
-			m := make(map[uint]string, size)
-			s := randStr(size)
+			m := make(map[uint][]byte, size)
+			s := randBts(size)
 			for i := 0; i < size; i++ {
 				m[uint(i)] = s[i]
 			}
@@ -163,7 +163,7 @@ func BenchmarkPathFromSlice(b *testing.B) {
 	for _, size := range sizes {
 		b.Run(fmt.Sprintf("%d", size), func(b *testing.B) {
 			data := make([]Pair, size)
-			s := randStr(size)
+			s := randBts(size)
 			for i, key := range rand.Perm(size) {
 				data[i] = Pair{uint(key), s[i]}
 			}
@@ -212,7 +212,7 @@ func BenchmarkPathAscendKeyIterator(b *testing.B) {
 
 func makePath(size int) Path {
 	data := make([]Pair, size)
-	s := randStr(size)
+	s := randBts(size)
 	rid := rand.Perm(size)
 	for i, key := range rid {
 		data[i] = Pair{uint(key), s[i]}

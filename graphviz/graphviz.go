@@ -92,7 +92,7 @@ type visitor struct {
 	root *radix.Leaf
 }
 
-func (v *visitor) OnNode(trace []radix.Pair, n *radix.Node) bool {
+func (v *visitor) OnNode(trace []radix.PairStr, n *radix.Node) bool {
 	i := v.id.node(n)
 	if markup[n] {
 		fmt.Fprintf(v.w, `"%v"[label="%v" fillcolor="#ffffff" color="red"];`, i, n.Key())
@@ -110,21 +110,21 @@ func (v *visitor) OnNode(trace []radix.Pair, n *radix.Node) bool {
 	return true
 }
 
-func (v *visitor) OnLeaf(trace []radix.Pair, l *radix.Leaf) bool {
+func (v *visitor) OnLeaf(trace []radix.PairStr, l *radix.Leaf) bool {
 	i := v.id.leaf(l)
 	if v.root == nil {
 		v.root = l
 	}
-	var value string
+	var value []byte
 	if p := l.Parent(); p != nil {
 		var ok bool
-		value, ok = radix.PathFromSliceBorrow(trace).Get(l.Parent().Key())
+		value, ok = radix.PathFromSliceStr(trace).Get(l.Parent().Key())
 		if !ok {
 			panic(fmt.Sprintf("trie is broken"))
 		}
 		parent(v.w, i, v.id.node(p))
 	}
-	fmt.Fprintf(v.w, `"%v"[label="%v" fillcolor="#bef1cf"];`, i, value)
+	fmt.Fprintf(v.w, `"%v"[label="%s" fillcolor="#bef1cf"];`, i, value)
 	if data := l.Data(); len(data) > 0 {
 		d := graphvizData(v.w, data, v.id)
 		relation(v.w, i, d)

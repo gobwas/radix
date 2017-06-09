@@ -3,11 +3,23 @@ package radix
 //go:generate ppgo
 
 import (
+	"bytes"
 	"fmt"
 	"sync"
 )
 
 type Pair struct {
+	Key   uint
+	Value []byte
+}
+
+func (p Pair) Equal(b Pair) bool {
+	return p.Key == b.Key && bytes.Equal(p.Value, b.Value)
+}
+
+// PairStr is like Pair but contains string in Value field, signaling that it
+// is immutable and retreived directly from storage internals.
+type PairStr struct {
 	Key   uint
 	Value string
 }
@@ -40,7 +52,7 @@ func NewPathBuilder(n int) *PathBuilder {
 	}
 }
 
-func (p *PathBuilder) Add(k uint, v string) {
+func (p *PathBuilder) Add(k uint, v []byte) {
 	p.pairs = append(p.pairs, Pair{k, v})
 }
 
@@ -75,7 +87,7 @@ func PathFromSlice(data []Pair) (ret Path) {
 	return PathFromSliceBorrow(pairs)
 }
 
-func PathFromMap(m map[uint]string) (ret Path) {
+func PathFromMap(m map[uint][]byte) (ret Path) {
 	if len(m) > MaxPathSize {
 		panic("max path size limit overflow")
 	}
@@ -93,6 +105,36 @@ func PathFromMap(m map[uint]string) (ret Path) {
 	return
 }
 
+// PathFromSliceStrmakes Path from slice of PairStr.
+// It could be used as helper, it allocates new []Pair and copies every PairStr
+// to []byte.
+func PathFromSliceStr(data []PairStr) (ret Path) {
+	return PathFromSliceBorrow(PairStrToPair(data))
+}
+
+// PathFromMapStr makes Path from map of uint to str.
+// It could be used as helper, it allocates new []Pair and copies every map
+// value to []byte.
+func PathFromMapStr(m map[uint]string) (ret Path) {
+	return PathFromSliceBorrow(MapStrToPair(m))
+}
+
+func PairStrToPair(p []PairStr) []Pair {
+	d := make([]Pair, len(p))
+	for i := 0; i < len(p); i++ {
+		d[i] = Pair{p[i].Key, []byte(p[i].Value)}
+	}
+	return d
+}
+
+func MapStrToPair(m map[uint]string) []Pair {
+	d := make([]Pair, 0, len(m))
+	for key, value := range m {
+		d = append(d, Pair{key, []byte(value)})
+	}
+	return d
+}
+
 func (p Path) Len() int { return p.len }
 
 func (p Path) Has(k uint) bool {
@@ -100,10 +142,10 @@ func (p Path) Has(k uint) bool {
 	return ok
 }
 
-func (p Path) Get(k uint) (string, bool) {
+func (p Path) Get(k uint) ([]byte, bool) {
 	i, ok := p.has(k)
 	if !ok {
-		return "", false
+		return nil, false
 	}
 	return p.pairs[i].Value, true
 }
@@ -195,13 +237,13 @@ func (p Path) Copy() Path {
 	return p
 }
 
-func (p Path) With(k uint, v string) Path {
+func (p Path) With(k uint, v []byte) Path {
 	var with []Pair
 
 	i, ok := pairSearch(p.pairs, k)
 	if ok {
 		p.include(i)
-		if p.pairs[i].Value == v {
+		if bytes.Equal(p.pairs[i].Value, v) {
 			return p
 		}
 		with = make([]Pair, len(p.pairs))
@@ -219,15 +261,6 @@ func (p Path) With(k uint, v string) Path {
 	p.len = len(p.pairs)
 
 	return p
-}
-
-func (p *Path) Set(k uint, v string) {
-	i, ok := pairSearch(p.pairs, k)
-	if ok {
-		p.pairs[i].Value = v
-	} else {
-		*p = p.With(k, v)
-	}
 }
 
 func (p *Path) Remove(k uint) {
@@ -271,7 +304,8 @@ func (a Path) Equal(b Path) bool {
 		return false
 	}
 	for i := 0; i < len(a.pairs); i++ {
-		if a.pairs[i] != b.pairs[i] {
+		ap, bp := a.pairs[i], b.pairs[i]
+		if !ap.Equal(bp) {
 			return false
 		}
 	}
