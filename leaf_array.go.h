@@ -11,4 +11,4 @@
 
 package radix
 
-MAKE_SORTED_ARRAY(12, uint, uint)
+MAKE_SORTED_ARRAY(15, uint, uint)

@@ -3,7 +3,7 @@
 
 package radix
 
-const UintArrayCapacity = 12
+const UintArrayCapacity = 15
 
 type uintArray struct {
 	data [UintArrayCapacity]uint
