@@ -3,47 +3,34 @@
 
 package radix_test
 
-func uintQuickSort(data []uint, lo, hi int) {
-	if lo >= hi {
-		return
-	}
-	// Quick sort partition algorithm.
-	var p int
-	{
-		// Let x be a pivot
-		x := data[lo]
-		p = lo
+func uintSort(data []uint, lo, hi int) {
+	if hi-lo <= 12 {
+		// Do insertion sort.
 		for i := lo + 1; i < hi; i++ {
-			if data[i] <= x {
-				p++
-				data[p], data[i] = data[i], data[p]
+			for j := i; j > lo && !(data[j-1] <= data[j]); j-- {
+				data[j], data[j-1] = data[j-1], data[j]
 			}
 		}
-		data[p], data[lo] = data[lo], data[p]
-	}
-	uintQuickSort(data, lo, p)
-	uintQuickSort(data, p+1, hi)
-}
-
-func uintInsertionSort(data []uint, l, r int) {
-	// Insertion sort algorithm.
-	for i := l + 1; i < r; i++ {
-		for j := i; j > l && !(data[j-1] <= data[j]); j-- {
-			data[j], data[j-1] = data[j-1], data[j]
-		}
-	}
-}
-
-func uintSort(data []uint, l, r int) {
-	if r-l > 12 {
-		uintQuickSort(data, l, r)
 		return
 	}
-	// Insertion sort algorithm.
-	for i := l + 1; i < r; i++ {
-		for j := i; j > l && !(data[j-1] <= data[j]); j-- {
-			data[j], data[j-1] = data[j-1], data[j]
+	// Do quick sort.
+	var (
+		p = lo
+		x = data[lo]
+	)
+	for i := lo + 1; i < hi; i++ {
+		if data[i] <= x {
+			p++
+			data[p], data[i] = data[i], data[p]
 		}
+	}
+	data[p], data[lo] = data[lo], data[p]
+
+	if lo < p {
+		uintSort(data, lo, p)
+	}
+	if p+1 < hi {
+		uintSort(data, p+1, hi)
 	}
 }
 

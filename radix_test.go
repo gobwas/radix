@@ -332,7 +332,7 @@ func TestLookup(t *testing.T) {
 			for i, p := range test.lookup {
 				var value []uint
 				Lookup(root, PathFromSliceStr(p), LookupStrategyGreedy, func(leaf *Leaf) bool {
-					value = append(value, leaf.Data()...)
+					value = leaf.AppendTo(value)
 					return true
 				})
 				if !listEq(value, test.exp) {
@@ -407,7 +407,7 @@ func TestSelect(t *testing.T) {
 			for _, p := range test.lookup {
 				var trace = map[uint]Capture{}
 				Select(root, PathFromSliceStr(p), capture, LookupStrategyGreedy, func(c Capture, l *Leaf) bool {
-					for _, v := range l.Data() {
+					for _, v := range l.AppendTo(nil) {
 						trace[v] = c.Copy()
 					}
 					return true

@@ -6,20 +6,63 @@ package radix
 import "sync"
 import "sync/atomic"
 
-// nodeArray represents synchronized sorted array of *Node.
+// nodeSyncSlice represents synchronized sorted array of *Node.
 // Note that in most cases you should store it somewhere by pointer.
 // This is needed because of non-pointer data inside, that used to syncrhonize usage.
-type nodeArray struct {
+type nodeSyncSlice struct {
 	mu      sync.RWMutex
 	data    []*Node
 	readers int64
 }
 
-func newNodeArray() *nodeArray {
-	return &nodeArray{}
+func newNodeSyncSlice(n int) *nodeSyncSlice {
+	return &nodeSyncSlice{
+		data: make([]*Node, 0, n),
+	}
 }
 
-func (a *nodeArray) Has(x uint) bool {
+// newNodeSyncSliceFromSlice creates nodeSyncSlice with underlying data.
+// Note that data is not copied and used by reference.
+func newNodeSyncSliceFromSlice(data []*Node) *nodeSyncSlice {
+	_nodeSyncSliceSortSource(data, 0, len(data))
+	return &nodeSyncSlice{
+		data: data,
+	}
+}
+
+// _nodeSyncSliceSortSource sorts data for further use inside nodeSyncSlice.
+func _nodeSyncSliceSortSource(data []*Node, lo, hi int) {
+	if hi-lo <= 12 {
+		// Do insertion sort.
+		for i := lo + 1; i < hi; i++ {
+			for j := i; j > lo && !(data[j-1].key <= data[j].key); j-- {
+				data[j], data[j-1] = data[j-1], data[j]
+			}
+		}
+		return
+	}
+	// Do quick sort.
+	var (
+		p = lo
+		x = data[lo]
+	)
+	for i := lo + 1; i < hi; i++ {
+		if data[i].key <= x.key {
+			p++
+			data[p], data[i] = data[i], data[p]
+		}
+	}
+	data[p], data[lo] = data[lo], data[p]
+
+	if lo < p {
+		_nodeSyncSliceSortSource(data, lo, p)
+	}
+	if p+1 < hi {
+		_nodeSyncSliceSortSource(data, p+1, hi)
+	}
+}
+
+func (a *nodeSyncSlice) Has(x uint) bool {
 	a.mu.RLock()
 	data := a.data
 	atomic.AddInt64(&a.readers, 1)
@@ -49,7 +92,7 @@ func (a *nodeArray) Has(x uint) bool {
 	return ok
 }
 
-func (a *nodeArray) Get(x uint) (*Node, bool) {
+func (a *nodeSyncSlice) Get(x uint) (*Node, bool) {
 	a.mu.RLock()
 	data := a.data
 	atomic.AddInt64(&a.readers, 1)
@@ -82,7 +125,7 @@ func (a *nodeArray) Get(x uint) (*Node, bool) {
 	return data[i], true
 }
 
-func (a *nodeArray) GetAny(it func() (uint, bool)) (*Node, bool) {
+func (a *nodeSyncSlice) GetAny(it func() (uint, bool)) (*Node, bool) {
 	a.mu.RLock()
 	data := a.data
 	atomic.AddInt64(&a.readers, 1)
@@ -121,7 +164,7 @@ func (a *nodeArray) GetAny(it func() (uint, bool)) (*Node, bool) {
 	return nil, false
 }
 
-func (a *nodeArray) Getsert(x *Node) *Node {
+func (a *nodeSyncSlice) Getsert(x *Node) *Node {
 	a.mu.Lock()
 	// Binary search algorithm.
 	var has bool
@@ -150,17 +193,26 @@ func (a *nodeArray) Getsert(x *Node) *Node {
 	}
 	r := atomic.LoadInt64(&a.readers)
 	switch {
-	case r == 0: // no readers, insert inplace
-		if cap(a.data) == len(a.data) { // not enough storage in array
-			goto copyCase
+	case r == 0: // No readers, insert inplace.
+		if n := len(a.data); n == cap(a.data) {
+			// No space for insertion. Grow.
+			with := make([]*Node, len(a.data)+1, n*3/2+1)
+			copy(with[:i], a.data[:i])
+			copy(with[i+1:], a.data[i:])
+			with[i] = x
+			a.data = with
+		} else {
+			a.data = a.data[:len(a.data)+1]
+			copy(a.data[i+1:], a.data[i:])
+			a.data[i] = x
 		}
-		a.data = a.data[:len(a.data)+1]
-		copy(a.data[i+1:], a.data[i:])
-		a.data[i] = x
-	copyCase:
-		fallthrough
-	case r > 0: // readers exists, do copy
-		with := make([]*Node, len(a.data)+1)
+	case r > 0: // Readers exists, do copy.
+		grow := len(a.data) + 1
+		if n := len(a.data); n == cap(a.data) {
+			// No space for insertion. Grow.
+			grow = len(a.data)*3/2 + 1
+		}
+		with := make([]*Node, len(a.data)+1, grow)
 		copy(with[:i], a.data[:i])
 		copy(with[i+1:], a.data[i:])
 		with[i] = x
@@ -170,7 +222,7 @@ func (a *nodeArray) Getsert(x *Node) *Node {
 	return x
 }
 
-func (a *nodeArray) GetsertFn(k uint, factory func() *Node) *Node {
+func (a *nodeSyncSlice) GetsertFn(k uint, factory func() *Node) *Node {
 	a.mu.Lock()
 	// Binary search algorithm.
 	var has bool
@@ -200,17 +252,26 @@ func (a *nodeArray) GetsertFn(k uint, factory func() *Node) *Node {
 	x := factory()
 	r := atomic.LoadInt64(&a.readers)
 	switch {
-	case r == 0: // no readers, insert inplace
-		if cap(a.data) == len(a.data) { // not enough storage in array
-			goto copyCase
+	case r == 0: // No readers, insert inplace.
+		if n := len(a.data); n == cap(a.data) {
+			// No space for insertion. Grow.
+			with := make([]*Node, len(a.data)+1, n*3/2+1)
+			copy(with[:i], a.data[:i])
+			copy(with[i+1:], a.data[i:])
+			with[i] = x
+			a.data = with
+		} else {
+			a.data = a.data[:len(a.data)+1]
+			copy(a.data[i+1:], a.data[i:])
+			a.data[i] = x
 		}
-		a.data = a.data[:len(a.data)+1]
-		copy(a.data[i+1:], a.data[i:])
-		a.data[i] = x
-	copyCase:
-		fallthrough
-	case r > 0: // readers exists, do copy
-		with := make([]*Node, len(a.data)+1)
+	case r > 0: // Readers exists, do copy.
+		grow := len(a.data) + 1
+		if n := len(a.data); n == cap(a.data) {
+			// No space for insertion. Grow.
+			grow = len(a.data)*3/2 + 1
+		}
+		with := make([]*Node, len(a.data)+1, grow)
 		copy(with[:i], a.data[:i])
 		copy(with[i+1:], a.data[i:])
 		with[i] = x
@@ -220,7 +281,7 @@ func (a *nodeArray) GetsertFn(k uint, factory func() *Node) *Node {
 	return x
 }
 
-func (a *nodeArray) GetsertAnyFn(it func() (uint, bool), factory func() *Node) *Node {
+func (a *nodeSyncSlice) GetsertAnyFn(it func() (uint, bool), factory func() *Node) *Node {
 	a.mu.Lock()
 	for {
 		k, ok := it()
@@ -280,17 +341,26 @@ func (a *nodeArray) GetsertAnyFn(it func() (uint, bool), factory func() *Node) *
 	}
 	r := atomic.LoadInt64(&a.readers)
 	switch {
-	case r == 0: // no readers, insert inplace
-		if cap(a.data) == len(a.data) { // not enough storage in array
-			goto copyCase
+	case r == 0: // No readers, insert inplace
+		if n := len(a.data); n == cap(a.data) {
+			// No space for insertion. Grow.
+			with := make([]*Node, len(a.data)+1, n*3/2+1)
+			copy(with[:i], a.data[:i])
+			copy(with[i+1:], a.data[i:])
+			with[i] = x
+			a.data = with
+		} else {
+			a.data = a.data[:len(a.data)+1]
+			copy(a.data[i+1:], a.data[i:])
+			a.data[i] = x
 		}
-		a.data = a.data[:len(a.data)+1]
-		copy(a.data[i+1:], a.data[i:])
-		a.data[i] = x
-	copyCase:
-		fallthrough
 	case r > 0: // readers exists, do copy
-		with := make([]*Node, len(a.data)+1)
+		grow := len(a.data) + 1
+		if n := len(a.data); n == cap(a.data) {
+			// No space for insertion. Grow.
+			grow = len(a.data)*3/2 + 1
+		}
+		with := make([]*Node, len(a.data)+1, grow)
 		copy(with[:i], a.data[:i])
 		copy(with[i+1:], a.data[i:])
 		with[i] = x
@@ -300,7 +370,11 @@ func (a *nodeArray) GetsertAnyFn(it func() (uint, bool), factory func() *Node) *
 	return x
 }
 
-func (a *nodeArray) Upsert(x *Node) (prev *Node) {
+// Upsert inserts item x into array or updates existing one.
+// It returns previous item (if were present) and a boolean flag that reports
+// about previous item replacement. This flag is useful for non-pointer item types
+// such as numbers or struct values.
+func (a *nodeSyncSlice) Upsert(x *Node) (prev *Node, ok bool) {
 	a.mu.Lock()
 	// Binary search algorithm.
 	var has bool
@@ -325,24 +399,34 @@ func (a *nodeArray) Upsert(x *Node) (prev *Node) {
 	}
 	r := atomic.LoadInt64(&a.readers)
 	switch {
-	case r > 0 && has: // readers exists, do copy
+	case r > 0 && has: // Readers exists, do copy.
 		with := make([]*Node, len(a.data))
 		copy(with, a.data)
 		a.data = with
 		fallthrough
-	case r == 0 && has: // no readers: update in place
+	case r == 0 && has: // No readers: update in place.
 		a.data[i], prev = x, a.data[i]
-	case r == 0 && !has: // no readers, insert inplace
-		if cap(a.data) == len(a.data) { // not enough storage in array
-			goto copyCase
+		ok = true
+	case r == 0 && !has: // No readers, insert inplace
+		if n := len(a.data); n == cap(a.data) {
+			// No space for insertion. Grow.
+			with := make([]*Node, len(a.data)+1, n*3/2+1)
+			copy(with[:i], a.data[:i])
+			copy(with[i+1:], a.data[i:])
+			with[i] = x
+			a.data = with
+		} else {
+			a.data = a.data[:len(a.data)+1]
+			copy(a.data[i+1:], a.data[i:])
+			a.data[i] = x
 		}
-		a.data = a.data[:len(a.data)+1]
-		copy(a.data[i+1:], a.data[i:])
-		a.data[i] = x
-	copyCase:
-		fallthrough
-	case r > 0 && !has: // readers exists, do copy
-		with := make([]*Node, len(a.data)+1)
+	case r > 0 && !has: // Readers exists, do copy.
+		grow := len(a.data) + 1
+		if n := len(a.data); n == cap(a.data) {
+			// No space for insertion. Grow.
+			grow = len(a.data)*3/2 + 1
+		}
+		with := make([]*Node, len(a.data)+1, grow)
 		copy(with[:i], a.data[:i])
 		copy(with[i+1:], a.data[i:])
 		with[i] = x
@@ -352,7 +436,7 @@ func (a *nodeArray) Upsert(x *Node) (prev *Node) {
 	return
 }
 
-func (a *nodeArray) Do(cb func([]*Node)) {
+func (a *nodeSyncSlice) Do(cb func([]*Node)) {
 	a.mu.RLock()
 	data := a.data
 	atomic.AddInt64(&a.readers, 1)
@@ -361,11 +445,20 @@ func (a *nodeArray) Do(cb func([]*Node)) {
 	cb(data)
 }
 
-func (a *nodeArray) Delete(x uint) (*Node, bool) {
+func (a *nodeSyncSlice) AppendTo(p []*Node) []*Node {
+	a.mu.RLock()
+	data := a.data
+	atomic.AddInt64(&a.readers, 1)
+	defer atomic.AddInt64(&a.readers, -1)
+	a.mu.RUnlock()
+	return append(p, data...)
+}
+
+func (a *nodeSyncSlice) Delete(x uint) (*Node, bool) {
 	return a.DeleteCond(x, nil)
 }
 
-func (a *nodeArray) DeleteCond(x uint, predicate func(*Node) bool) (*Node, bool) {
+func (a *nodeSyncSlice) DeleteCond(x uint, predicate func(*Node) bool) (*Node, bool) {
 	a.mu.Lock()
 	// Binary search algorithm.
 	var has bool
@@ -399,10 +492,10 @@ func (a *nodeArray) DeleteCond(x uint, predicate func(*Node) bool) (*Node, bool)
 	prev := a.data[i]
 	r := atomic.LoadInt64(&a.readers)
 	switch {
-	case r == 0: // no readers, delete inplace
+	case r == 0: // No readers, delete inplace.
 		a.data[i] = nil
 		a.data = a.data[:i+copy(a.data[i:], a.data[i+1:])]
-	case r > 0: // has readers, copy
+	case r > 0: // Has readers, copy.
 		without := make([]*Node, len(a.data)-1)
 		copy(without[:i], a.data[:i])
 		copy(without[i:], a.data[i+1:])
@@ -412,7 +505,7 @@ func (a *nodeArray) DeleteCond(x uint, predicate func(*Node) bool) (*Node, bool)
 	return prev, true
 }
 
-func (a *nodeArray) Ascend(cb func(x *Node) bool) bool {
+func (a *nodeSyncSlice) Ascend(cb func(x *Node) bool) bool {
 	a.mu.RLock()
 	data := a.data
 	atomic.AddInt64(&a.readers, 1)
@@ -426,7 +519,7 @@ func (a *nodeArray) Ascend(cb func(x *Node) bool) bool {
 	return true
 }
 
-func (a *nodeArray) AscendRange(x, y uint, cb func(x *Node) bool) bool {
+func (a *nodeSyncSlice) AscendRange(x, y uint, cb func(x *Node) bool) bool {
 	a.mu.RLock()
 	data := a.data
 	atomic.AddInt64(&a.readers, 1)
@@ -482,7 +575,7 @@ func (a *nodeArray) AscendRange(x, y uint, cb func(x *Node) bool) bool {
 	return true
 }
 
-func (a *nodeArray) Len() int {
+func (a *nodeSyncSlice) Len() int {
 	a.mu.RLock()
 	n := len(a.data)
 	a.mu.RUnlock()

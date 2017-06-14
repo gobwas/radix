@@ -20,12 +20,13 @@ type Leaf struct {
 
 	// dmu holds mutex for data manipulation.
 	dmu sync.RWMutex
+
 	// If leaf data is at most arrayLimit, uint sorted array is used.
 	// Otherwise BTree will hold the data.
-	array uintSortedArray
+	array uintArray
 	btree *btree.BTree
 
-	children *nodeArray
+	children *nodeSyncSlice
 }
 
 // newLeaf creates leaf with parent node.
@@ -33,7 +34,7 @@ func NewLeaf(parent *Node, value string) *Leaf {
 	return &Leaf{
 		parent:   parent,
 		value:    value,
-		children: newNodeArray(),
+		children: &nodeSyncSlice{},
 	}
 }
 
@@ -50,7 +51,7 @@ func (l *Leaf) HasChild(key uint) bool {
 }
 
 func (l *Leaf) AddChild(n *Node) {
-	prev := l.children.Upsert(n)
+	prev, _ := l.children.Upsert(n)
 	n.parent = l
 	if prev != nil {
 		panic(fmt.Sprintf("leaf already has child with key %v", n.key))
@@ -102,29 +103,27 @@ func (l *Leaf) GetsertAny(it func() (uint, bool), add func() *Node) *Node {
 	return l.children.GetsertAnyFn(it, add)
 }
 
-func (l *Leaf) Data() []uint {
+func (l *Leaf) AppendTo(p []uint) []uint {
 	l.dmu.RLock()
 	if l.btree != nil {
-		ret := make([]uint, l.btree.Len())
-		var i int
 		l.btree.Ascend(func(x btree.Item) bool {
-			ret[i] = uint(x.(btreeUint))
-			i++
+			p = append(p, uint(x.(btreeUint)))
 			return true
 		})
 		l.dmu.RUnlock()
-		return ret
+		return p
 	}
-	arr := l.array
+	array := l.array
 	l.dmu.RUnlock()
 
-	return arr.Copy()
+	return array.AppendTo(p)
 }
 
 func (l *Leaf) Empty() bool {
 	if l.children.Len() > 0 {
 		return false
 	}
+
 	l.dmu.RLock()
 	var n int
 	if l.btree != nil {
@@ -133,6 +132,7 @@ func (l *Leaf) Empty() bool {
 		n = l.array.Len()
 	}
 	l.dmu.RUnlock()
+
 	return n == 0
 }
 
@@ -141,7 +141,7 @@ func (l *Leaf) Empty() bool {
 func (l *Leaf) Append(v uint) (ok bool) {
 	l.dmu.Lock()
 	switch {
-	case l.array.Len() == arrayLimit:
+	case l.array.Len() == l.array.Cap():
 		l.btree = btree.New(degree)
 		l.array.Ascend(func(v uint) bool {
 			l.btree.ReplaceOrInsert(btreeUint(v))
@@ -155,9 +155,7 @@ func (l *Leaf) Append(v uint) (ok bool) {
 		ok = prev == nil
 
 	default:
-		var prev uint
-		l.array, prev = l.array.Upsert(v)
-		ok = prev == 0
+		l.array, _, ok = l.array.Upsert(v)
 	}
 	l.dmu.Unlock()
 
@@ -179,8 +177,10 @@ func (l *Leaf) Remove(v uint) (ok bool) {
 	return
 }
 
-func (l *Leaf) Ascend(it Iterator) (ok bool) {
-	ok = true
+func (l *Leaf) Ascend(it Iterator) bool {
+	var (
+		ok = true
+	)
 	l.dmu.RLock()
 	if l.btree != nil {
 		l.btree.Ascend(func(i btree.Item) bool {
@@ -188,17 +188,12 @@ func (l *Leaf) Ascend(it Iterator) (ok bool) {
 			return ok
 		})
 		l.dmu.RUnlock()
-		return
+		return ok
 	}
-	arr := l.array
+	array := l.array
 	l.dmu.RUnlock()
 
-	arr.Ascend(func(v uint) bool {
-		ok = it(v)
-		return ok
-	})
-
-	return
+	return array.Ascend(it)
 }
 
 // Inserter contains options for inserting values into the tree.

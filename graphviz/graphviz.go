@@ -125,7 +125,7 @@ func (v *visitor) OnLeaf(trace []radix.PairStr, l *radix.Leaf) bool {
 		parent(v.w, i, v.id.node(p))
 	}
 	fmt.Fprintf(v.w, `"%v"[label="%s" fillcolor="#bef1cf"];`, i, value)
-	if data := l.Data(); len(data) > 0 {
+	if data := l.AppendTo(nil); len(data) > 0 {
 		d := graphvizData(v.w, data, v.id)
 		relation(v.w, i, d)
 	}
@@ -158,7 +158,7 @@ func relation(w io.Writer, a, b int64) {
 }
 
 func leafSize(l *radix.Leaf) (s uintptr) {
-	for _, v := range l.Data() {
+	for _, v := range l.AppendTo(nil) {
 		s += unsafe.Sizeof(v)
 	}
 	l.AscendChildren(func(n *radix.Node) bool {
