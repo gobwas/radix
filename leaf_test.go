@@ -23,13 +23,13 @@ func TestLeafAscend(t *testing.T) {
 			expect: []uint{},
 		},
 		{
-			append: []uint{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+			append: seq(UintArrayCapacity + 1),
 			remove: nil,
-			expect: []uint{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+			expect: seq(UintArrayCapacity + 1),
 		},
 		{
-			append: []uint{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
-			remove: []uint{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12},
+			append: seq(UintArrayCapacity + 1),
+			remove: seq(UintArrayCapacity + 1),
 			expect: []uint{},
 		},
 	} {
@@ -73,10 +73,10 @@ func TestLeafAppend(t *testing.T) {
 			arr:    0,
 		},
 		{
-			append: 12,
+			append: UintArrayCapacity,
 			remove: 0,
 			btree:  0,
-			arr:    12,
+			arr:    UintArrayCapacity,
 		},
 		{
 			append: arrayLimit + 1,
@@ -123,8 +123,16 @@ func TestLeafAppend(t *testing.T) {
 				}
 			}
 			if n := leaf.array.Len(); n != test.arr {
-				t.Errorf("array len is %d; want %d", n, test.btree)
+				t.Errorf("array len is %d; want %d", n, test.arr)
 			}
 		})
 	}
+}
+
+func seq(n int) []uint {
+	ret := make([]uint, n)
+	for i := range ret {
+		ret[i] = uint(i)
+	}
+	return ret
 }

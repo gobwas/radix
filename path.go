@@ -77,7 +77,7 @@ type Path struct {
 func PathFromSliceBorrow(data []Pair) (ret Path) {
 	ret.pairs = data
 	ret.len = len(data)
-	pairSort(ret.pairs, 0, len(ret.pairs))
+	SortPair(ret.pairs, 0, len(ret.pairs))
 	return
 }
 
@@ -105,7 +105,7 @@ func PathFromMap(m map[uint][]byte) (ret Path) {
 		}
 	}
 	ret.len = i
-	pairSort(ret.pairs, 0, i)
+	SortPair(ret.pairs, 0, i)
 	return
 }
 
@@ -219,8 +219,8 @@ func (p Path) End() PathCursor {
 }
 
 func (p Path) AscendRange(a, b uint, cb func(Pair) bool) {
-	i, _ := pairSearch(p.pairs, a)
-	j, _ := pairSearch(p.pairs, b)
+	i, _ := SearchPair(p.pairs, a)
+	j, _ := SearchPair(p.pairs, b)
 	for ; i <= j; i++ {
 		if p.includes(i) && !cb(p.pairs[i]) {
 			return
@@ -244,7 +244,7 @@ func (p Path) Copy() Path {
 func (p Path) With(k uint, v []byte) Path {
 	var with []Pair
 
-	i, ok := pairSearch(p.pairs, k)
+	i, ok := SearchPair(p.pairs, k)
 	if ok {
 		p.include(i)
 		if bytes.Equal(p.pairs[i].Value, v) {
@@ -268,7 +268,7 @@ func (p Path) With(k uint, v []byte) Path {
 }
 
 func (p *Path) Remove(k uint) {
-	i, ok := pairSearch(p.pairs, k)
+	i, ok := SearchPair(p.pairs, k)
 	if !ok {
 		return
 	}
