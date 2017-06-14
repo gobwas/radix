@@ -122,7 +122,10 @@ func (l *Leaf) Empty() bool {
 	if l.children.Len() > 0 {
 		return false
 	}
+	return l.ItemCount() == 0
+}
 
+func (l *Leaf) ItemCount() int {
 	l.dmu.RLock()
 	var n int
 	if l.btree != nil {
@@ -131,8 +134,7 @@ func (l *Leaf) Empty() bool {
 		n = l.array.Len()
 	}
 	l.dmu.RUnlock()
-
-	return n == 0
+	return n
 }
 
 // Append appends v to leaf values. It returns true if v was not present there.

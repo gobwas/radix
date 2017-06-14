@@ -121,6 +121,14 @@ func (t *Trie) Walk(query Path, v Visitor) {
 	Walk(t.root, query, v)
 }
 
+// ItemCount returns number of items on every Leaf which is reachable from
+// found Leaf by a query.
+func (t *Trie) ItemCount(query Path) int {
+	v := ItemCountVisitor{}
+	Walk(t.root, query, &v)
+	return v.Count()
+}
+
 // SizeOf counts number of leafs and nodes of every leafs that matches query.
 func (t *Trie) SizeOf(query Path) (leafs, nodes int) {
 	return SizeOf(t.root, query)
@@ -332,6 +340,23 @@ func Lookup(lf *Leaf, query Path, s LookupStrategy, it LeafIterator) bool {
 type Visitor interface {
 	OnLeaf([]PairStr, *Leaf) bool
 	OnNode([]PairStr, *Node) bool
+}
+
+type ItemCountVisitor struct {
+	n int
+}
+
+func (v *ItemCountVisitor) Count() int {
+	return v.n
+}
+
+func (v *ItemCountVisitor) OnLeaf(_ []PairStr, leaf *Leaf) bool {
+	v.n += leaf.ItemCount()
+	return true
+}
+
+func (v *ItemCountVisitor) OnNode(_ []PairStr, _ *Node) bool {
+	return true
 }
 
 type InspectorVisitor struct {

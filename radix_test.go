@@ -534,6 +534,81 @@ func TestTrieInsertDelete(t *testing.T) {
 	}
 }
 
+func TestTrieItemCount(t *testing.T) {
+	for _, test := range []struct {
+		insert []item
+		query  Path
+		expect int
+	}{
+		{
+			insert: []item{
+				{pairs{{0x1, "a"}, {0x2, "b"}, {0x3, "c"}}, 42},
+			},
+			expect: 1,
+		},
+		{
+			insert: []item{
+				{pairs{{1, "a"}, {2, "b"}}, 1},
+				{pairs{{1, "a"}, {2, "b"}}, 2},
+				{pairs{{1, "a"}}, 3},
+				{pairs{{2, "b"}}, 4},
+				{pairs{}, 5},
+			},
+			expect: 5,
+		},
+		{
+			insert: []item{
+				{pairs{{1, "a"}, {2, "b"}}, 1},
+				{pairs{{1, "a"}, {2, "b"}}, 2},
+				{pairs{{1, "a"}}, 3},
+				{pairs{{2, "b"}}, 4},
+				{pairs{}, 5},
+			},
+			query: PathFromSliceStr([]PairStr{
+				{1, "a"},
+			}),
+			expect: 3,
+		},
+		{
+			insert: []item{
+				{pairs{{1, "a"}, {2, "b"}}, 1},
+				{pairs{{1, "a"}, {2, "b"}}, 2},
+				{pairs{{1, "a"}}, 3},
+				{pairs{{2, "b"}}, 4},
+				{pairs{}, 5},
+			},
+			query: PathFromSliceStr([]PairStr{
+				{1, "a"}, {2, "b"},
+			}),
+			expect: 2,
+		},
+		{
+			insert: []item{
+				{pairs{{1, "a"}, {2, "b"}}, 1},
+				{pairs{{1, "a"}, {2, "b"}}, 2},
+				{pairs{{1, "a"}}, 3},
+				{pairs{{2, "b"}}, 4},
+				{pairs{}, 5},
+			},
+			query: PathFromSliceStr([]PairStr{
+				{2, "b"},
+			}),
+			expect: 1,
+		},
+	} {
+		trie := New(nil)
+		for _, op := range test.insert {
+			trie.Insert(PathFromSliceStr(op.p), op.v)
+		}
+		if act := trie.ItemCount(test.query); act != test.expect {
+			t.Errorf(
+				"ItemCount(%v) = %v; want %v\nTrie:\n%s",
+				test.query, act, test.expect, listing.DumpString(trie),
+			)
+		}
+	}
+}
+
 func listEq(a, b []uint) bool {
 	if len(a) != len(b) {
 		return false
