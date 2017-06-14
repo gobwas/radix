@@ -10,8 +10,7 @@ import (
 )
 
 const (
-	arrayLimit = 12
-	degree     = 128
+	degree = 128
 )
 
 type Leaf struct {
@@ -21,7 +20,7 @@ type Leaf struct {
 	// dmu holds mutex for data manipulation.
 	dmu sync.RWMutex
 
-	// If leaf data is at most arrayLimit, uint sorted array is used.
+	// If leaf data is at most array.Cap(), uint sorted array is used.
 	// Otherwise BTree will hold the data.
 	array uintArray
 	btree *btree.BTree
