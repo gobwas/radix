@@ -137,7 +137,8 @@ func (l *Leaf) ItemCount() int {
 	return n
 }
 
-// Append appends v to leaf values. It returns true if v was not present there.
+// Append appends v to leaf values.
+// It returns true if v was not present there.
 // Note that zero v will not report correct ok value.
 func (l *Leaf) Append(v uint) (ok bool) {
 	l.dmu.Lock()
@@ -156,7 +157,9 @@ func (l *Leaf) Append(v uint) (ok bool) {
 		ok = prev == nil
 
 	default:
-		l.array, _, ok = l.array.Upsert(v)
+		var replaced bool
+		l.array, _, replaced = l.array.Upsert(v)
+		ok = !replaced
 	}
 	l.dmu.Unlock()
 
