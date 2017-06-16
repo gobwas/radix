@@ -110,7 +110,7 @@ func (a *uintArray) Get(x uint) (uint, bool) {
 // non-pointer item types such as numbers or struct values.
 //
 // Note that it will panic on out of range insertion.
-func (a uintArray) Upsert(x uint) (cp uintArray, prev uint, ok bool) {
+func (a uintArray) Upsert(x uint) (cp uintArray, prev uint, replaced bool) {
 	// Binary search algorithm.
 	var has bool
 	var i int
@@ -134,17 +134,18 @@ func (a uintArray) Upsert(x uint) (cp uintArray, prev uint, ok bool) {
 	}
 	if has {
 		a.data[i], prev = x, a.data[i]
-		ok = true
+		replaced = true
 	} else {
 		a.size++
 		copy(a.data[i+1:a.size], a.data[i:a.size-1])
 		a.data[i] = x
 		prev = 0
 	}
-	return a, prev, ok
+	return a, prev, replaced
 }
 
-func (a uintArray) Delete(x uint) (cp uintArray, prev uint, ok bool) {
+// Delete removes x from uintArray. It returns true when x was present and removed.
+func (a uintArray) Delete(x uint) (cp uintArray, prev uint, removed bool) {
 	// Binary search algorithm.
 	var has bool
 	var i int
