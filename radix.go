@@ -8,11 +8,11 @@ import (
 type (
 	Iterator      func(uint) bool
 	TraceIterator func([]PairStr, uint) bool
-	PathIterator  func(Capture, uint) bool
+	PathIterator  func(Wildcard, uint) bool
 
 	LeafIterator      func(*Leaf) bool
 	TraceLeafIterator func([]PairStr, *Leaf) bool
-	PathLeafIterator  func(Capture, *Leaf) bool
+	PathLeafIterator  func(Wildcard, *Leaf) bool
 )
 
 type TrieConfig struct {
@@ -70,7 +70,8 @@ func (t *Trie) DeleteFrom(leaf *Leaf, p Path, v uint) (ok bool) {
 	return
 }
 
-// LookupStrict calls Lookup with trie root leaf and given query.
+// LookupStrict calls Lookup with trie root leaf, given query and strict lookup
+// strategy.
 // If query does not contains all trie keys, use Select.
 func (t *Trie) LookupStrict(query Path, it Iterator) {
 	Lookup(t.root, query, LookupStrategyStrict, func(l *Leaf) bool {
@@ -78,7 +79,8 @@ func (t *Trie) LookupStrict(query Path, it Iterator) {
 	})
 }
 
-// LookupGreedy calls Lookup with trie root leaf and given query.
+// LookupGreedy calls Lookup with trie root leaf, given query and greedy lookup
+// strategy.
 // If query does not contains all trie keys, use Select.
 func (t *Trie) LookupGreedy(query Path, it Iterator) {
 	Lookup(t.root, query, LookupStrategyGreedy, func(l *Leaf) bool {
@@ -86,18 +88,38 @@ func (t *Trie) LookupGreedy(query Path, it Iterator) {
 	})
 }
 
-// SelectGreedy calls Select with trie root leaf and given query and capture.
-func (t *Trie) SelectGreedy(query Path, capture Capture, it PathIterator) {
-	Select(t.root, query, capture, LookupStrategyGreedy, func(captured Capture, leaf *Leaf) bool {
+// LookupWildcardStrict calls LookupWildcard with trie root leaf, given
+// query, wildcard and strict lookup strategy.
+func (t *Trie) LookupWildcardStrict(query Path, wildcard Wildcard, it PathIterator) {
+	LookupWildcard(t.root, query, wildcard, LookupStrategyStrict, func(captured Wildcard, leaf *Leaf) bool {
 		return leaf.Ascend(func(val uint) bool {
 			return it(captured, val)
 		})
 	})
 }
 
-// SelectStrict calls Select with trie root leaf and given query and capture.
-func (t *Trie) SelectStrict(query Path, capture Capture, it PathIterator) {
-	Select(t.root, query, capture, LookupStrategyStrict, func(captured Capture, leaf *Leaf) bool {
+// LookupWildcardGreedy calls LookupWildcard with trie root leaf, given
+// query, wildcard and greedy lookup strategy.
+func (t *Trie) LookupWildcardGreedy(query Path, wildcard Wildcard, it PathIterator) {
+	LookupWildcard(t.root, query, wildcard, LookupStrategyGreedy, func(captured Wildcard, leaf *Leaf) bool {
+		return leaf.Ascend(func(val uint) bool {
+			return it(captured, val)
+		})
+	})
+}
+
+// SelectGreedy calls Select with trie root leaf and given query and wildcard.
+func (t *Trie) SelectGreedy(query Path, wildcard Wildcard, it PathIterator) {
+	Select(t.root, query, wildcard, LookupStrategyGreedy, func(captured Wildcard, leaf *Leaf) bool {
+		return leaf.Ascend(func(val uint) bool {
+			return it(captured, val)
+		})
+	})
+}
+
+// SelectStrict calls Select with trie root leaf and given query and wildcard.
+func (t *Trie) SelectStrict(query Path, wildcard Wildcard, it PathIterator) {
+	Select(t.root, query, wildcard, LookupStrategyStrict, func(captured Wildcard, leaf *Leaf) bool {
 		return leaf.Ascend(func(val uint) bool {
 			return it(captured, val)
 		})
@@ -188,25 +210,25 @@ const (
 	LookupStrategyGreedy
 )
 
-type Capture map[uint]string
+type Wildcard map[uint]string
 
-func NewCapture(keys ...uint) Capture {
-	c := make(Capture, len(keys))
+func NewWildcard(keys ...uint) Wildcard {
+	c := make(Wildcard, len(keys))
 	for _, key := range keys {
 		c[key] = ""
 	}
 	return c
 }
 
-func (c Capture) Copy() Capture {
-	cp := make(Capture, len(c))
+func (c Wildcard) Copy() Wildcard {
+	cp := make(Wildcard, len(c))
 	for key, value := range c {
 		cp[key] = value
 	}
 	return cp
 }
 
-func (c Capture) String() string {
+func (c Wildcard) String() string {
 	var buf bytes.Buffer
 
 	var nonempty bool
@@ -228,24 +250,45 @@ func (c Capture) String() string {
 // Select traverses the trie starting from given leaf.
 //
 // If it founds node with key, that is not present in query, it begins to
-// traverse all it childs (leafs).
+// traverse all it childs (leafs). If key is present in given wildcard, then at
+// every traverse iteration it will set Wildcard value for that key to leaf's
+// value. This wildcard then passed as argument to the given iterator. Note
+// that wildcard is only valid until iterator returns.
 //
-// At every traverse iteration it fills path with pairs that are not listed in
-// query and are listed in capture. This path is passed as argument to the
-// given iterator.
-//
-// Note that path (capture) passed to it is only valid until it returns.
+// If you want to skip the nodes, which key is not present in wildcard, use
+// LookupWildcard.
 //
 // If you have query with all keys of trie, you could use Lookup,
 // that is more efficient.
-func Select(lf *Leaf, query Path, capture Capture, s LookupStrategy, it PathLeafIterator) bool {
+func Select(lf *Leaf, query Path, wildcard Wildcard, s LookupStrategy, it PathLeafIterator) {
+	capture(lf, query, wildcard, true, s, it)
+}
+
+// LookupWildcard traverses the trie starting from given leaf.
+//
+// If it founds node with key, that is not present in query, but present in
+// wildcard, it begins to traverse all it childs (leafs).
+// At every traverse iteration it set Wildcard value for that key to
+// leaf's value. This wildcard then passed as argument to the given iterator.
+// Note that wildcard is only valid until iterator returns.
+//
+// If you do not want to skip nodes, which key is not present in wildcard, use
+// Select.
+//
+// If you have query with all keys of trie, you could use Lookup,
+// that is more efficient.
+func LookupWildcard(lf *Leaf, query Path, wildcard Wildcard, s LookupStrategy, it PathLeafIterator) {
+	capture(lf, query, wildcard, false, s, it)
+}
+
+func capture(lf *Leaf, query Path, wildcard Wildcard, greedy bool, s LookupStrategy, it PathLeafIterator) bool {
 	switch s {
 	case LookupStrategyStrict:
 		if query.Len() == 0 {
-			return it(capture, lf)
+			return it(wildcard, lf)
 		}
 	case LookupStrategyGreedy:
-		if !it(capture, lf) {
+		if !it(wildcard, lf) {
 			return false
 		}
 	}
@@ -253,16 +296,16 @@ func Select(lf *Leaf, query Path, capture Capture, s LookupStrategy, it PathLeaf
 		// If query has filter for this node.
 		if v, ok := query.Get(n.key); ok {
 			if leaf := n.GetLeaf(v); leaf != nil {
-				// We do not make capture.With(n.key, v) because it is already
-				// exists in query. That is we fill capture only with keys and
+				// We do not make wildcard.With(n.key, v) because it is already
+				// exists in query. That is we fill wildcard only with keys and
 				// values that are not exists in query.
-				return Select(leaf, query.Without(n.key), capture, s, it)
+				return capture(leaf, query.Without(n.key), wildcard, greedy, s, it)
 			}
 			// Filter this leaf cause it does not fit query.
 			return true
 		}
 
-		// Must reset capture with previous value after scanning current node.
+		// Must reset wildcard with previous value after scanning current node.
 		// That is done to prevent bugs when node with some key is present in
 		// multiple places:
 		//
@@ -277,16 +320,20 @@ func Select(lf *Leaf, query Path, capture Capture, s LookupStrategy, it PathLeaf
 		// That is, when we looking up for items with {2:b} query and capturing
 		// {1:""}, then we receive {1:a} for "item1" and {1:a} for "item2", but
 		// we want {1:""} for item2.
-		prev, set := capture[n.key]
+		prev, has := wildcard[n.key]
+		if !has && !greedy {
+			// If capture() called in non-greedy mode, skip this node.
+			return true
+		}
 		r := n.AscendLeafs(func(v string, leaf *Leaf) bool {
-			if set {
-				capture[n.key] = v
+			if has {
+				wildcard[n.key] = v
 			}
-			return Select(leaf, query, capture, s, it)
+			return capture(leaf, query, wildcard, greedy, s, it)
 		})
-		if set {
-			// Reset capture to a previous value.
-			capture[n.key] = prev
+		if has {
+			// Reset wildcard to a previous value.
+			wildcard[n.key] = prev
 		}
 		return r
 	})

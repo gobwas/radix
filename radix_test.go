@@ -349,86 +349,6 @@ func TestLookup(t *testing.T) {
 	}
 }
 
-func TestSelect(t *testing.T) {
-	for i, test := range []struct {
-		insert   []item
-		lookup   []pairs
-		capture  []uint
-		strategy LookupStrategy
-		exp      map[uint]Capture
-	}{
-		{
-			insert: []item{
-				{pairs{{1, "a"}, {2, "b"}, {3, "c"}}, 1},
-			},
-			lookup: []pairs{
-				pairs{{1, "a"}, {3, "c"}},
-				pairs{{3, "c"}, {1, "a"}},
-			},
-			capture:  []uint{2},
-			strategy: LookupStrategyGreedy,
-			exp: map[uint]Capture{
-				1: Capture{2: "b"},
-			},
-		},
-		{
-			insert: []item{
-				{pairs{{1, "a"}, {2, "b"}, {3, "c"}}, 1},
-				{pairs{{1, "a"}, {2, "b"}, {3, "c"}}, 2},
-				{pairs{{2, "b"}, {3, "c"}}, 3},
-				{pairs{{2, "b"}, {3, "c"}}, 4},
-				{pairs{}, 5},
-			},
-			lookup: []pairs{
-				pairs{{1, "a"}, {3, "c"}},
-				pairs{{3, "c"}, {1, "a"}},
-			},
-			capture:  []uint{2},
-			strategy: LookupStrategyGreedy,
-			exp: map[uint]Capture{
-				1: Capture{2: "b"},
-				2: Capture{2: "b"},
-				3: Capture{2: "b"},
-				4: Capture{2: "b"},
-				5: Capture{2: ""},
-			},
-		},
-	} {
-		label := fmt.Sprintf("#%d", i)
-
-		t.Run(label, func(t *testing.T) {
-			root := NewLeaf(nil, "root")
-			for _, op := range test.insert {
-				(&Inserter{}).ForceInsert(root, PairStrToPair(op.p), op.v)
-			}
-
-			capture := NewCapture(test.capture...)
-
-			for _, p := range test.lookup {
-				var trace = map[uint]Capture{}
-				Select(root, PathFromSliceStr(p), capture, LookupStrategyGreedy, func(c Capture, l *Leaf) bool {
-					for _, v := range l.AppendTo(nil) {
-						trace[v] = c.Copy()
-					}
-					return true
-				})
-
-				for v, trc := range trace {
-					if exp := test.exp[v]; !reflect.DeepEqual(trc, exp) {
-						var buf bytes.Buffer
-						listing.DumpLeaf(&buf, root)
-
-						t.Errorf(
-							"[%d] Select(%v) returned %#q with capture %#q; want %#q;\nTrie:\n%s\n",
-							i, p, v, trace, exp, buf.String(),
-						)
-					}
-				}
-			}
-		})
-	}
-}
-
 type countVisitor struct {
 	nodes int
 	leafs int
@@ -676,7 +596,7 @@ func randStrn(n, m int) (ret []string) {
 
 func TestTrieSelect(t *testing.T) {
 	trie := New(&TrieConfig{
-		NodeOrder: []uint{1, 2, 3},
+		NodeOrder: []uint{1, 2},
 	})
 
 	trie.Insert(PathFromMapStr(map[uint]string{1: "a"}), 0xff01)
@@ -693,31 +613,35 @@ func TestTrieSelect(t *testing.T) {
 		k := "key" + strconv.FormatInt(int64(i), 16)
 		trie.Insert(PathFromMapStr(map[uint]string{1: "a", 2: k, 3: "c"}), uint(i))
 	}
+	for i := 4; i < 6; i++ {
+		k := "key" + strconv.FormatInt(int64(i), 16)
+		trie.Insert(PathFromMapStr(map[uint]string{1: "a", 2: k, 4: "d"}), uint(i))
+	}
 
 	lookup := PathFromMapStr(map[uint]string{1: "a", 3: "c"})
 
-	capture := Capture{2: ""}
+	capture := NewWildcard(2)
 
 	expStrict := map[string]uint{
-		Capture{2: "key2"}.String(): 2,
-		Capture{2: "key3"}.String(): 3,
-		Capture{2: ""}.String():     0xbb02,
+		Wildcard{2: "key2"}.String(): 2,
+		Wildcard{2: "key3"}.String(): 3,
+		Wildcard{2: ""}.String():     0xbb02,
 	}
 	expGreedy := map[string]uint{
-		Capture{2: "key2"}.String(): 2,
-		Capture{2: "key3"}.String(): 3,
-		Capture{2: ""}.String():     0xbb02,
-		Capture{2: ""}.String():     0xff01,
-		Capture{2: ""}.String():     0xff03,
+		Wildcard{2: "key2"}.String(): 2,
+		Wildcard{2: "key3"}.String(): 3,
+		Wildcard{2: "key4"}.String(): 4,
+		Wildcard{2: "key5"}.String(): 5,
+		Wildcard{2: ""}.String():     0xbb02,
+		Wildcard{2: ""}.String():     0xff01,
+		Wildcard{2: ""}.String():     0xff03,
 	}
 
 	actStrict := map[string]uint{}
 	actGreedy := map[string]uint{}
 
-	fmt.Println(listing.DumpString(trie))
-
-	trie.SelectStrict(lookup, capture, func(c Capture, v uint) bool { actStrict[c.String()] = v; return true })
-	trie.SelectGreedy(lookup, capture, func(c Capture, v uint) bool { actGreedy[c.String()] = v; return true })
+	trie.SelectStrict(lookup, capture, func(c Wildcard, v uint) bool { actStrict[c.String()] = v; return true })
+	trie.SelectGreedy(lookup, capture, func(c Wildcard, v uint) bool { actGreedy[c.String()] = v; return true })
 
 	if !reflect.DeepEqual(actStrict, expStrict) {
 		t.Errorf(
@@ -730,5 +654,72 @@ func TestTrieSelect(t *testing.T) {
 			"unexpected greedy results:\n\tlookup: %#q; capture %#q;\n\t%#v;\n\twant:\n\t%#v",
 			lookup.String(), capture.String(), actGreedy, expGreedy,
 		)
+	}
+	if t.Failed() {
+		fmt.Println(listing.DumpString(trie))
+	}
+}
+
+func TestTrieLookupWildcard(t *testing.T) {
+	trie := New(&TrieConfig{
+		NodeOrder: []uint{1, 2},
+	})
+
+	trie.Insert(PathFromMapStr(map[uint]string{1: "a"}), 0xff01)
+	trie.Insert(PathFromMapStr(map[uint]string{3: "b"}), 0xff02)
+	trie.Insert(PathFromMapStr(map[uint]string{3: "c"}), 0xff03)
+	trie.Insert(PathFromMapStr(map[uint]string{1: "a", 3: "b"}), 0xbb01)
+	trie.Insert(PathFromMapStr(map[uint]string{1: "a", 3: "c"}), 0xbb02)
+
+	for i := 0; i < 2; i++ {
+		k := "key" + strconv.FormatInt(int64(i), 16)
+		trie.Insert(PathFromMapStr(map[uint]string{1: "a", 2: k, 3: "b"}), uint(i))
+	}
+	for i := 2; i < 4; i++ {
+		k := "key" + strconv.FormatInt(int64(i), 16)
+		trie.Insert(PathFromMapStr(map[uint]string{1: "a", 2: k, 3: "c"}), uint(i))
+	}
+	for i := 4; i < 6; i++ {
+		k := "key" + strconv.FormatInt(int64(i), 16)
+		trie.Insert(PathFromMapStr(map[uint]string{1: "a", 2: k, 4: "d"}), uint(i))
+	}
+
+	lookup := PathFromMapStr(map[uint]string{1: "a", 3: "c"})
+
+	capture := NewWildcard(2)
+
+	expStrict := map[string]uint{
+		Wildcard{2: "key2"}.String(): 2,
+		Wildcard{2: "key3"}.String(): 3,
+		Wildcard{2: ""}.String():     0xbb02,
+	}
+	expGreedy := map[string]uint{
+		Wildcard{2: "key2"}.String(): 2,
+		Wildcard{2: "key3"}.String(): 3,
+		Wildcard{2: ""}.String():     0xbb02,
+		Wildcard{2: ""}.String():     0xff01,
+		Wildcard{2: ""}.String():     0xff03,
+	}
+
+	actStrict := map[string]uint{}
+	actGreedy := map[string]uint{}
+
+	trie.LookupWildcardStrict(lookup, capture, func(c Wildcard, v uint) bool { actStrict[c.String()] = v; return true })
+	trie.LookupWildcardGreedy(lookup, capture, func(c Wildcard, v uint) bool { actGreedy[c.String()] = v; return true })
+
+	if !reflect.DeepEqual(actStrict, expStrict) {
+		t.Errorf(
+			"unexpected strict results:\n\tlookup: %#q; capture %#q;\n\t%#v;\n\twant:\n\t%#v",
+			lookup.String(), capture.String(), actStrict, expStrict,
+		)
+	}
+	if !reflect.DeepEqual(actGreedy, expGreedy) {
+		t.Errorf(
+			"unexpected greedy results:\n\tlookup: %#q; capture %#q;\n\t%#v;\n\twant:\n\t%#v",
+			lookup.String(), capture.String(), actGreedy, expGreedy,
+		)
+	}
+	if t.Failed() {
+		fmt.Println(listing.DumpString(trie))
 	}
 }
