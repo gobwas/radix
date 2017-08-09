@@ -440,12 +440,9 @@ func dig(leaf *Leaf, trace []PairStr, v Visitor) bool {
 		if !v.OnNode(trace, n) {
 			return false
 		}
-		for val, chLeaf := range n.values {
-			if !dig(chLeaf, append(trace, PairStr{n.key, val}), v) {
-				return false
-			}
-		}
-		return true
+		return n.AscendLeafs(func(val string, chLeaf *Leaf) bool {
+			return dig(chLeaf, append(trace, PairStr{n.key, val}), v)
+		})
 	})
 }
 
