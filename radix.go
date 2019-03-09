@@ -228,6 +228,14 @@ func (c Wildcard) Copy() Wildcard {
 	return cp
 }
 
+func (c Wildcard) Reset() {
+	for key, value := range c {
+		if value != "" {
+			c[key] = ""
+		}
+	}
+}
+
 func (c Wildcard) String() string {
 	var buf bytes.Buffer
 

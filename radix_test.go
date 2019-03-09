@@ -723,3 +723,28 @@ func TestTrieLookupWildcard(t *testing.T) {
 		fmt.Println(listing.DumpString(trie))
 	}
 }
+
+func TestWilcardMethods(t *testing.T) {
+	capture := NewWildcard(2)
+	val, has := capture[2]
+	if !has {
+		t.Errorf("wildcard key not created")
+	}
+	if val != "" {
+		t.Errorf("wildcard value unexpected")
+	}
+
+	capture[2] = "testvalue1"
+	capture_c := capture.Copy()
+	capture.Reset()
+	val, has = capture[2]
+	if !has || val != "" {
+		t.Errorf("wildcard.Reset not working")
+	}
+
+	val, has = capture_c[2]
+	if !has || val != "testvalue1" {
+		t.Errorf("wildcard.Copy not working")
+	}
+}
+
